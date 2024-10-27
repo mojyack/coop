@@ -1,6 +1,7 @@
 #pragma once
-#include <coroutine>
 #include <vector>
+
+#include "cohandle.hpp"
 
 namespace coop {
 struct Task;
@@ -14,7 +15,8 @@ struct [[nodiscard]] Event {
     std::vector<Task*> waiters;
 
     auto await_ready() const -> bool { return false; }
-    auto await_suspend(std::coroutine_handle<Promise<void>> caller_task) -> void;
+    template <CoHandleLike CoHandle>
+    auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> void {}
 
     auto notify() -> void;
