@@ -5,6 +5,7 @@
 #include <coop/generator.hpp>
 #include <coop/io.hpp>
 #include <coop/parallel.hpp>
+#include <coop/promise.hpp>
 #include <coop/runner.hpp>
 #include <coop/thread.hpp>
 #include <coop/timer.hpp>
