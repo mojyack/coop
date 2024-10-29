@@ -1,55 +1,10 @@
 #pragma once
 #include <concepts>
-#include <thread>
 
-#include <sys/eventfd.h>
-#include <unistd.h>
-
-#include "io-pre.hpp"
-#include "runner-pre.hpp"
+#include "thread-event.hpp"
+#include "thread-pre.hpp"
 
 namespace coop {
-struct ThreadEvent {
-    int fd = -1;
-
-    auto notify() -> void {
-        eventfd_write(fd, 1);
-    }
-
-    ThreadEvent(ThreadEvent&& o)
-        : fd(std::exchange(o.fd, -1)) {
-    }
-
-    ThreadEvent()
-        : fd(eventfd(0, 0)) {
-    }
-
-    ~ThreadEvent() {
-        if(fd != -1) {
-            close(fd);
-        }
-    }
-};
-
-template <class Ret, class... Args>
-struct run_blocking /* ThreadAdapter */ {
-    Runner*                     runner;
-    std::thread                 thread;
-    std::function<Ret(Args...)> function;
-    std::tuple<Args...>         args;
-    Ret                         ret;
-    IOWaitResult                result;
-    ThreadEvent                 event;
-
-    auto await_ready() const -> bool;
-    template <CoHandleLike CoHandle>
-    auto await_suspend(CoHandle caller_task) -> void;
-    auto await_resume() -> Ret;
-
-    run_blocking(std::function<Ret(Args...)> function, Args... args);
-    ~run_blocking();
-};
-
 template <class Ret, class... Args>
 auto run_blocking<Ret, Args...>::await_ready() const -> bool {
     return false;
@@ -66,8 +21,7 @@ auto run_blocking<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
             args);
         event.notify();
     });
-    runner = caller_task.promise().runner;
-    runner->io_wait(event.fd, true, false, result);
+    event.await_suspend(caller_task);
 }
 
 template <class Ret, class... Args>

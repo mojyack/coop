@@ -149,6 +149,15 @@ auto task_cancel_test() -> coop::Async<void> {
     }
 }
 
+auto thread_event_test() -> coop::Async<void> {
+    auto event  = coop::ThreadEvent();
+    auto thread = std::thread([&event] {std::this_thread::sleep_for(std::chrono::seconds(3)); event.notify(); });
+    line_print("thread started");
+    co_await event;
+    line_print("done");
+    thread.join();
+}
+
 auto os_thread_test() -> coop::Async<void> {
     const auto blocking_func = [](int seconds) { std::this_thread::sleep_for(std::chrono::seconds(seconds)); return true; };
     line_print("launching blocking function");
@@ -184,6 +193,10 @@ auto main() -> int {
 
     line_print("==== task cancel ====");
     runner.push_task(task_cancel_test());
+    runner.run();
+
+    line_print("==== thread-safe event ====");
+    runner.push_task(thread_event_test());
     runner.run();
 
     line_print("==== blocking adapter ====");
