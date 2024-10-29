@@ -12,6 +12,10 @@ namespace coop {
 struct ThreadEvent {
     int fd = -1;
 
+    auto notify() -> void {
+        eventfd_write(fd, 1);
+    }
+
     ThreadEvent(ThreadEvent&& o)
         : fd(std::exchange(o.fd, -1)) {
     }
@@ -60,7 +64,7 @@ auto run_blocking<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
                 return function(std::forward<Args>(args)...);
             },
             args);
-        eventfd_write(event.fd, 1);
+        event.notify();
     });
     runner = caller_task.promise().runner;
     runner->io_wait(event.fd, true, false, result);
