@@ -1,5 +1,6 @@
 #pragma once
 #include <concepts>
+#include <functional>
 
 #include "thread-event.hpp"
 #include "thread-pre.hpp"
