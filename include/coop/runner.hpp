@@ -95,10 +95,10 @@ inline auto TaskHandle::cancel() -> bool {
 
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     for(auto& task : tasks) {
-        // impl::debug("resuming task=", task, " handle=", task->handle.address());
+        impl::debug("resuming task=", task, " handle=", task->handle.address());
         current_task = task;
         task->handle.resume();
-        // impl::debug("task done");
+        impl::debug("task done");
         if(task->handle.done()) {
             destroy_task(*task);
         }
@@ -232,9 +232,9 @@ loop:
     if(!context.poll_tasks.empty()) {
         // wait for io
         auto& pollfds = context.poll_fds;
-        // impl::debug("poll start timeout=", timeout_ms);
+        impl::debug("poll start timeout=", timeout_ms);
         const auto nfds = poll(pollfds.data(), pollfds.size(), timeout_ms + 1 /* +1 to correct rounding error */);
-        // impl::debug("poll done count=", nfds);
+        impl::debug("poll done count=", nfds);
         if(nfds < 0 && errno != EINTR) {
             impl::error(__LINE__, " poll failed errno=", strerror(errno));
             return;
