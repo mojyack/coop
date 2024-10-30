@@ -2,6 +2,7 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include "runner.hpp"
 #include "thread-event-pre.hpp"
 
 namespace coop {
