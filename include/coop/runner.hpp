@@ -4,7 +4,9 @@
 #include <thread>
 #include <vector>
 
+#if !defined(_WIN32)
 #include "poll.h"
+#endif
 
 #include "event-pre.hpp"
 #include "io-pre.hpp"
@@ -208,7 +210,7 @@ inline auto Runner::event_notify(Event& event) -> void {
     event.waiters.clear();
 }
 
-inline auto Runner::io_wait(const int fd, const bool read, const bool write, IOWaitResult& result) -> void {
+inline auto Runner::io_wait(const IOHandle fd, const bool read, const bool write, IOWaitResult& result) -> void {
     // impl::debug("fd=", fd, " read=", read, " write=", write);
     current_task->suspend_reason.emplace<ByIO>(&result, fd, read, write);
 }
@@ -234,12 +236,21 @@ loop:
         // wait for io
         auto& pollfds = context.poll_fds;
         impl::debug("poll start timeout=", timeout_ms);
-        const auto nfds = poll(pollfds.data(), pollfds.size(), timeout_ms + 1 /* +1 to correct rounding error */);
-        impl::debug("poll done count=", nfds);
+        const auto poll_timeout = timeout_ms + 1; // +1 to correct rounding error
+#if defined(_WIN32)
+        const auto nfds = WSAPoll(pollfds.data(), pollfds.size(), poll_timeout);
+        if(nfds == SOCKET_ERROR) {
+            impl::error(__LINE__, " poll failed errno=", WSAGetLastError());
+            return;
+        }
+#else
+        const auto nfds = poll(pollfds.data(), pollfds.size(), poll_timeout);
         if(nfds < 0 && errno != EINTR) {
             impl::error(__LINE__, " poll failed errno=", strerror(errno));
             return;
         }
+#endif
+        impl::debug("poll done count=", nfds);
 
         auto ready = std::vector<Task*>();
         for(auto i = 0, c = 0; i < int(pollfds.size()) && c < nfds; i += 1) {

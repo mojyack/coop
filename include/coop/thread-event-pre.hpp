@@ -2,9 +2,18 @@
 #include "cohandle.hpp"
 #include "io-pre.hpp"
 
+// emulate eventfd with socket pipe
+#if defined(_WIN32)
+#include "pipe.hpp"
+#endif
+
 namespace coop {
 struct ThreadEvent {
-    int          fd = -1;
+#if defined(_WIN32)
+    Pipe pipe;
+#else
+    int fd = -1;
+#endif
     IOWaitResult result;
 
     auto await_ready() const -> bool;

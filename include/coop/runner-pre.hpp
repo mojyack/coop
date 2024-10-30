@@ -5,12 +5,22 @@
 #include <span>
 #include <variant>
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#endif
+
 #include "cohandle.hpp"
 #include "generator-pre.hpp"
 
 namespace coop {
 struct IOWaitResult;
 struct Event;
+
+#if defined(_WIN32)
+using IOHandle = SOCKET;
+#else
+using IOHandle = int;
+#endif
 
 struct Running {
 };
@@ -25,7 +35,7 @@ struct ByEvent {
 
 struct ByIO {
     IOWaitResult* result;
-    int           file;
+    IOHandle      file;
     bool          read;
     bool          write;
 };
@@ -72,7 +82,7 @@ struct Runner {
     auto delay(std::chrono::system_clock::duration duration) -> void;
     auto event_wait(Event& event) -> void;
     auto event_notify(Event& event) -> void;
-    auto io_wait(int fd, bool read, bool write, IOWaitResult& result) -> void;
+    auto io_wait(IOHandle fd, bool read, bool write, IOWaitResult& result) -> void;
 
     // public
     template <CoGeneratorLike... Generators>
