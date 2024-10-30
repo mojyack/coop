@@ -16,9 +16,10 @@ inline auto ThreadEvent::await_suspend(CoHandle caller_task) -> void {
     runner->io_wait(fd, true, false, result);
 }
 
-inline auto ThreadEvent::await_resume() -> void {
+inline auto ThreadEvent::await_resume() -> size_t {
     auto count = eventfd_t();
     eventfd_read(fd, &count);
+    return count;
 }
 
 inline auto ThreadEvent::notify() -> void {

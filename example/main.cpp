@@ -149,6 +149,12 @@ auto thread_event_test() -> coop::Async<void> {
         co_await event;
         coop::line_print("notified");
     }
+
+    event.notify();
+    event.notify();
+    event.notify();
+    coop::assert(co_await event == 3);
+
     coop::line_print("done");
     thread.join();
 }

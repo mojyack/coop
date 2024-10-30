@@ -15,7 +15,7 @@ inline auto ThreadEvent::await_suspend(CoHandle caller_task) -> void {
     runner->io_wait(pipe.producer(), true, false, result);
 }
 
-inline auto ThreadEvent::await_resume() -> void {
+inline auto ThreadEvent::await_resume() -> size_t {
     const auto sock = pipe.producer();
 
     auto mode = u_long();
@@ -24,7 +24,7 @@ inline auto ThreadEvent::await_resume() -> void {
     mode = 1;
     coop::assert(ioctlsocket(sock, FIONBIO, &mode) == 0, "errno=", WSAGetLastError());
 
-    [[maybe_unused]] auto count = 0;
+    auto count = size_t(0);
     while(true) {
         auto buffer = std::byte();
         if(pipe.read(&buffer, 1) != 1) {
@@ -38,6 +38,8 @@ inline auto ThreadEvent::await_resume() -> void {
     // set to blocking
     mode = 0;
     coop::assert(ioctlsocket(sock, FIONBIO, &mode) == 0, "errno=", WSAGetLastError());
+
+    return count;
 }
 
 inline auto ThreadEvent::notify() -> void {

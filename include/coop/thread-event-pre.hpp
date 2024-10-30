@@ -19,7 +19,7 @@ struct ThreadEvent {
     auto await_ready() const -> bool;
     template <CoHandleLike CoHandle>
     auto await_suspend(CoHandle caller_task) -> void;
-    auto await_resume() -> void;
+    auto await_resume() -> size_t;
 
     auto notify() -> void;
 
