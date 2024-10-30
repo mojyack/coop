@@ -3,9 +3,7 @@
 
 namespace coop {
 template <class T>
-concept CoGeneratorLike = requires(T generator) {
-    CoHandleLike<decltype(generator.handle)>;
-};
+concept CoGeneratorLike = CoHandleLike<decltype(T::handle)>;
 
 template <class T>
 struct CoGenerator;
