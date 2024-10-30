@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 
 #include <coop/assert.hpp>
 #include <coop/blocker.hpp>
@@ -14,10 +15,16 @@
 #include <coop/timer.hpp>
 #include <unistd.h>
 
+auto speed_rate = 1.0;
+
 auto delay_secs(int seconds) -> coop::Async<int> {
     coop::line_print("delay ", seconds);
-    co_await coop::sleep(std::chrono::seconds(seconds));
+    co_await coop::sleep(std::chrono::milliseconds(size_t(1000 * seconds / speed_rate)));
     co_return seconds;
+}
+
+auto sleep_secs(int seconds) -> void {
+    std::this_thread::sleep_for(std::chrono::milliseconds(size_t(1000 * seconds / speed_rate)));
 }
 
 auto some_heavy_work() -> coop::Async<void> {
@@ -140,7 +147,7 @@ auto thread_event_test() -> coop::Async<void> {
     auto event  = coop::ThreadEvent();
     auto thread = std::thread([&event] {
         for(auto i = 0; i < 3; i += 1) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            sleep_secs(1);
             event.notify();
         }
     });
@@ -160,7 +167,7 @@ auto thread_event_test() -> coop::Async<void> {
 }
 
 auto os_thread_test() -> coop::Async<void> {
-    const auto blocking_func = [](int seconds) { std::this_thread::sleep_for(std::chrono::seconds(seconds)); return true; };
+    const auto blocking_func = [](int seconds) { sleep_secs(seconds); return true; };
     coop::line_print("launching blocking function");
     const auto result = co_await coop::run_blocking(blocking_func, 3);
     coop::line_print("done result=", result);
@@ -186,7 +193,12 @@ auto push_task_from_other_thread_test() -> coop::Async<void> {
     coop::line_print("done");
 }
 
-auto main() -> int {
+auto main(const int argc, const char* const* argv) -> int {
+    if(argc == 2) {
+        speed_rate = std::strtod(argv[1], NULL);
+        coop::assert(speed_rate != 0.0);
+    }
+
     auto runner = coop::Runner();
 
     coop::line_print("==== delay ====");
