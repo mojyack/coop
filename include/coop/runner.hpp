@@ -93,7 +93,7 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 } // namespace impl
 
 inline auto TaskHandle::cancel() -> bool {
-    return runner->cancel_taks(*this);
+    return runner->cancel_task(*this);
 }
 
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
@@ -179,7 +179,7 @@ inline auto Runner::destroy_task(Task& task) -> bool {
     return true;
 }
 
-inline auto Runner::cancel_taks(TaskHandle& handle) -> bool {
+inline auto Runner::cancel_task(TaskHandle& handle) -> bool {
     if(handle.task == nullptr || handle.destroyed) {
         return true;
     }

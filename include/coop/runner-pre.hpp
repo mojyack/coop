@@ -89,7 +89,7 @@ struct Runner {
     auto push_task(Generators... generators) -> void;
     template <CoGeneratorLike... Generators>
     auto push_task(std::span<TaskHandle* const> user_handles, Generators... generators) -> void;
-    auto cancel_taks(TaskHandle& handle) -> bool;
+    auto cancel_task(TaskHandle& handle) -> bool;
     auto run() -> void;
 };
 
