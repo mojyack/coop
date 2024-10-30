@@ -1,6 +1,7 @@
 #include <chrono>
 #include <source_location>
 
+#include <coop/blocker.hpp>
 #include <coop/event.hpp>
 #include <coop/generator.hpp>
 #include <coop/io.hpp>
@@ -165,6 +166,26 @@ auto os_thread_test() -> coop::Async<void> {
     line_print("done result=", result);
 }
 
+auto push_task_from_other_thread_test() -> coop::Async<void> {
+    auto& runner  = *co_await coop::reveal_runner();
+    auto  blocker = coop::Blocker();
+    blocker.start(runner);
+    auto other_thread = std::thread([&runner, &blocker]() {
+        const auto tid = std::this_thread::get_id();
+        for(auto i = 0; i < 3; i += 1) {
+            blocker.block();
+            runner.push_task([](decltype(tid) tid) -> coop::Async<void> {
+                line_print("spawned by thread ", tid);
+                co_return;
+            }(tid));
+            blocker.unblock();
+        }
+    });
+    co_await coop::run_blocking([&other_thread]() {other_thread.join(); return true; });
+    blocker.stop();
+    line_print("done");
+}
+
 auto main() -> int {
     auto runner = coop::Runner();
 
@@ -201,6 +222,10 @@ auto main() -> int {
 
     line_print("==== blocking adapter ====");
     runner.push_task(os_thread_test());
+    runner.run();
+
+    line_print("==== push task from other thread ====");
+    runner.push_task(push_task_from_other_thread_test());
     runner.run();
 
     return 0;
