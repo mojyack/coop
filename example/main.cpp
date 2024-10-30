@@ -152,9 +152,17 @@ auto task_cancel_test() -> coop::Async<void> {
 
 auto thread_event_test() -> coop::Async<void> {
     auto event  = coop::ThreadEvent();
-    auto thread = std::thread([&event] {std::this_thread::sleep_for(std::chrono::seconds(3)); event.notify(); });
+    auto thread = std::thread([&event] {
+        for(auto i = 0; i < 3; i += 1) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            event.notify();
+        }
+    });
     line_print("thread started");
-    co_await event;
+    for(auto i = 0; i < 3; i += 1) {
+        co_await event;
+        line_print("notified");
+    }
     line_print("done");
     thread.join();
 }
