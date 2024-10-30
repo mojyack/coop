@@ -6,7 +6,7 @@
 namespace coop {
 inline auto Blocker::start(coop::Runner& runner) -> void {
     const auto handles = {&handle};
-    auto       task    = [](Blocker& self) -> coop::Async<void> {
+    const auto task    = [](Blocker& self) -> coop::Async<void> {
         loop:
             co_await self.do_block_event; // wait for block()
             self.blocking_flag.notify();  // indicate runner is blocked
