@@ -1,7 +1,7 @@
 #pragma once
 #include "atomic-event.hpp"
-#include "coop/runner-pre.hpp"
-#include "thread-pre.hpp"
+#include "runner-pre.hpp"
+#include "thread-event-pre.hpp"
 
 namespace coop {
 struct Blocker {

@@ -2,6 +2,7 @@
 #include "blocker-pre.hpp"
 #include "generator.hpp"
 #include "promise.hpp"
+#include "thread-event.hpp"
 
 namespace coop {
 inline auto Blocker::start(coop::Runner& runner) -> void {
