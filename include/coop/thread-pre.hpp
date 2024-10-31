@@ -6,7 +6,7 @@
 
 namespace coop {
 template <class Ret, class... Args>
-struct run_blocking /* ThreadAdapter */ {
+struct [[nodiscard]] run_blocking /* ThreadAdapter */ {
     std::thread                 thread;
     std::function<Ret(Args...)> function;
     std::tuple<Args...>         args;

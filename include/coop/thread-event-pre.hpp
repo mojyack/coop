@@ -8,7 +8,7 @@
 #endif
 
 namespace coop {
-struct ThreadEvent {
+struct [[nodiscard]] ThreadEvent {
 #if defined(_WIN32)
     Pipe pipe;
 #else
