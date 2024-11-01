@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstring>
 #include <utility>
 
 #include <unistd.h>
@@ -27,7 +28,7 @@ struct Pipe {
     }
 
     Pipe() {
-        assert(pipe(fds.data()) == 0, "errno=", errno, " ", strerror(errno));
+        assert(pipe(fds.data()) == 0, "errno=", errno, " ", std::strerror(errno));
     }
 
     ~Pipe() {
