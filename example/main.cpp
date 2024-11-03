@@ -84,6 +84,20 @@ auto event_test_notifier(coop::Event& event) -> coop::Async<void> {
     event.notify();
 }
 
+auto event_cancel_test() -> coop::Async<void> {
+    auto event  = coop::Event();
+    auto handle = coop::TaskHandle();
+    co_await coop::run_args(
+        [](coop::Event& event) -> coop::Async<void> {
+            co_await event;
+        }(event))
+        .detach({&handle});
+    co_await coop::sleep(std::chrono::seconds(1));
+    handle.cancel();
+    event.notify();
+    co_return;
+}
+
 auto io_test_reader(coop::Pipe& pipe) -> coop::Async<void> {
     auto buf = std::array<char, 16>();
     while(true) {
@@ -208,6 +222,10 @@ auto main(const int argc, const char* const* argv) -> int {
     coop::line_print("==== event await ====");
     auto event = coop::Event();
     runner.push_task(event_test_waiter(event), event_test_notifier(event));
+    runner.run();
+
+    coop::line_print("==== event cancel ====");
+    runner.push_task(event_cancel_test());
     runner.run();
 
     coop::line_print("==== io await ====");

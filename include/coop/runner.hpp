@@ -173,6 +173,15 @@ inline auto Runner::destroy_task(Task& task) -> bool {
         task.user_handle->task      = nullptr;
         task.user_handle->destroyed = true;
     }
+    if(const auto ptr = std::get_if<ByEvent>(&task.suspend_reason)) {
+        auto& waiters = ptr->event->waiters;
+        auto  iter    = std::ranges::find(waiters, &task);
+        if(iter != waiters.end()) {
+            waiters.erase(iter);
+        } else {
+            impl::error(__LINE__, " bug: task=", &task);
+        }
+    }
     if(!impl::remove_task_child(task)) {
         impl::error(__LINE__, " bug: parent=", task.parent, " child=", &task);
     }
