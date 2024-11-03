@@ -4,13 +4,14 @@
 
 #include <coop/assert.hpp>
 #include <coop/blocker.hpp>
-#include <coop/event.hpp>
 #include <coop/generator.hpp>
 #include <coop/io.hpp>
+#include <coop/multi-event.hpp>
 #include <coop/parallel.hpp>
 #include <coop/pipe.hpp>
 #include <coop/promise.hpp>
 #include <coop/runner.hpp>
+#include <coop/single-event.hpp>
 #include <coop/thread.hpp>
 #include <coop/timer.hpp>
 #include <unistd.h>
@@ -66,29 +67,47 @@ auto sleep_test() -> coop::Async<int> {
     co_return 0;
 }
 
-auto event_test_waiter(coop::Event& event) -> coop::Async<void> {
+auto single_event_test_waiter(coop::SingleEvent& event) -> coop::Async<void> {
     coop::line_print("1");
     co_await event;
     coop::line_print("2");
     co_await event;
     coop::line_print("3");
     co_await event;
+
+    coop::line_print("4");
+    co_await event;
+    coop::line_print("5");
+    co_await event;
+    coop::line_print("6");
+    co_await event;
+
+    coop::line_print("done");
 }
 
-auto event_test_notifier(coop::Event& event) -> coop::Async<void> {
+auto single_event_test_notifier(coop::SingleEvent& event) -> coop::Async<void> {
+    // notify after await
     co_await delay_secs(1);
     event.notify();
     co_await delay_secs(1);
     event.notify();
     co_await delay_secs(1);
     event.notify();
+
+    // notify before await
+    event.notify();
+    co_await delay_secs(1);
+    event.notify();
+    co_await delay_secs(1);
+    event.notify();
+    co_await delay_secs(1);
 }
 
 auto event_cancel_test() -> coop::Async<void> {
-    auto event  = coop::Event();
+    auto event  = coop::SingleEvent();
     auto handle = coop::TaskHandle();
     co_await coop::run_args(
-        [](coop::Event& event) -> coop::Async<void> {
+        [](coop::SingleEvent& event) -> coop::Async<void> {
             co_await event;
         }(event))
         .detach({&handle});
@@ -96,6 +115,22 @@ auto event_cancel_test() -> coop::Async<void> {
     handle.cancel();
     event.notify();
     co_return;
+}
+
+auto multi_event_test() -> coop::Async<void> {
+    auto event  = coop::MultiEvent();
+    auto waiter = [](coop::MultiEvent& event) -> coop::Async<void> {
+        for(auto i = 0; i < 3; i += 1) {
+            co_await event;
+            coop::line_print("notified");
+        }
+    };
+    co_await coop::run_args(waiter(event), waiter(event), waiter(event)).detach();
+
+    for(auto i = 0; i < 3; i += 1) {
+        co_await delay_secs(1);
+        event.notify();
+    }
 }
 
 auto io_test_reader(coop::Pipe& pipe) -> coop::Async<void> {
@@ -124,11 +159,11 @@ auto io_test_writer(coop::Pipe& pipe) -> coop::Async<void> {
 
 auto detach_test() -> coop::Async<void> {
     coop::line_print();
-    auto event = coop::Event();
+    auto event = coop::SingleEvent();
     coop::line_print();
-    co_await coop::run_args(event_test_notifier(event)).detach();
+    co_await coop::run_args(single_event_test_notifier(event)).detach();
     coop::line_print();
-    co_await coop::run_args(event_test_waiter(event));
+    co_await coop::run_args(single_event_test_waiter(event));
     coop::line_print();
 }
 
@@ -219,13 +254,17 @@ auto main(const int argc, const char* const* argv) -> int {
     runner.push_task(sleep_test());
     runner.run();
 
-    coop::line_print("==== event await ====");
-    auto event = coop::Event();
-    runner.push_task(event_test_waiter(event), event_test_notifier(event));
+    coop::line_print("==== single event await ====");
+    auto event = coop::SingleEvent();
+    runner.push_task(single_event_test_waiter(event), single_event_test_notifier(event));
     runner.run();
 
-    coop::line_print("==== event cancel ====");
+    coop::line_print("==== single event cancel ====");
     runner.push_task(event_cancel_test());
+    runner.run();
+
+    coop::line_print("==== multi event ====");
+    runner.push_task(multi_event_test());
     runner.run();
 
     coop::line_print("==== io await ====");

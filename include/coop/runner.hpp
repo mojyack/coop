@@ -8,9 +8,10 @@
 #include "poll.h"
 #endif
 
-#include "event-pre.hpp"
 #include "io-pre.hpp"
+#include "multi-event-pre.hpp"
 #include "runner-pre.hpp"
+#include "single-event-pre.hpp"
 
 namespace coop {
 namespace impl {
@@ -70,10 +71,12 @@ inline auto collect_resumable_tasks(Task& task, CollectContext& context) -> void
             context.sleep = std::min(context.sleep, timer.suspend_until - context.now);
         }
     } break;
-    case 2: // ByEvent
+    case 2: // BySingleEvent
         break;
-    case 3: { // ByIO
-        auto& io = std::get<3>(reason);
+    case 3: // ByMultiEvent
+        break;
+    case 4: { // ByIO
+        auto& io = std::get<4>(reason);
         context.poll_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
         context.poll_tasks.push_back(&task);
     } break;
@@ -173,14 +176,26 @@ inline auto Runner::destroy_task(Task& task) -> bool {
         task.user_handle->task      = nullptr;
         task.user_handle->destroyed = true;
     }
-    if(const auto ptr = std::get_if<ByEvent>(&task.suspend_reason)) {
-        auto& waiters = ptr->event->waiters;
+    switch(task.suspend_reason.index()) {
+    case 2: {
+        auto& event  = std::get<2>(task.suspend_reason);
+        auto& waiter = event.event->waiter;
+        if(waiter == &task) {
+            waiter = nullptr;
+        } else {
+            impl::error(__LINE__, " bug: task=", &task);
+        }
+    } break;
+    case 3: {
+        auto& event   = std::get<3>(task.suspend_reason);
+        auto& waiters = event.event->waiters;
         auto  iter    = std::ranges::find(waiters, &task);
         if(iter != waiters.end()) {
             waiters.erase(iter);
         } else {
             impl::error(__LINE__, " bug: task=", &task);
         }
+    } break;
     }
     if(!impl::remove_task_child(task)) {
         impl::error(__LINE__, " bug: parent=", task.parent, " child=", &task);
@@ -201,16 +216,33 @@ inline auto Runner::delay(const std::chrono::system_clock::duration duration) ->
     current_task->suspend_reason.emplace<ByTimer>(std::chrono::system_clock::now() + duration);
 }
 
-inline auto Runner::event_wait(Event& event) -> void {
+inline auto Runner::event_wait(SingleEvent& event) -> void {
     // impl::debug("wait ", &event, " task=", current_task);
-    current_task->suspend_reason.emplace<ByEvent>(&event);
+    current_task->suspend_reason.emplace<BySingleEvent>(&event);
+    event.waiter = current_task;
+}
+
+inline auto Runner::event_notify(SingleEvent& event) -> void {
+    // impl::debug("notify ", &event, " size=", event.waiters.size());
+    const auto task = event.waiter;
+    if(std::get_if<BySingleEvent>(&task->suspend_reason) == nullptr) {
+        impl::error(__LINE__, " bug: task=", task, " index=", task->suspend_reason.index());
+        return;
+    }
+    task->suspend_reason.emplace<Running>();
+    event.waiter = nullptr;
+}
+
+inline auto Runner::event_wait(MultiEvent& event) -> void {
+    // impl::debug("wait ", &event, " task=", current_task);
+    current_task->suspend_reason.emplace<ByMultiEvent>(&event);
     event.waiters.push_back(current_task);
 }
 
-inline auto Runner::event_notify(Event& event) -> void {
+inline auto Runner::event_notify(MultiEvent& event) -> void {
     // impl::debug("notify ", &event, " size=", event.waiters.size());
     for(const auto task : event.waiters) {
-        if(std::get_if<ByEvent>(&task->suspend_reason) == nullptr) {
+        if(std::get_if<ByMultiEvent>(&task->suspend_reason) == nullptr) {
             impl::error(__LINE__, " bug: task=", task, " index=", task->suspend_reason.index());
             continue;
         }

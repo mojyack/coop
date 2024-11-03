@@ -14,7 +14,8 @@
 
 namespace coop {
 struct IOWaitResult;
-struct Event;
+struct SingleEvent;
+struct MultiEvent;
 
 #if defined(_WIN32)
 using IOHandle = SOCKET;
@@ -29,8 +30,12 @@ struct ByTimer {
     std::chrono::system_clock::time_point suspend_until;
 };
 
-struct ByEvent {
-    Event* event;
+struct BySingleEvent {
+    SingleEvent* event;
+};
+
+struct ByMultiEvent {
+    MultiEvent* event;
 };
 
 struct ByIO {
@@ -40,7 +45,7 @@ struct ByIO {
     bool          write;
 };
 
-using SuspendReason = std::variant<Running, ByTimer, ByEvent, ByIO>;
+using SuspendReason = std::variant<Running, ByTimer, BySingleEvent, ByMultiEvent, ByIO>;
 
 struct Task;
 
@@ -80,8 +85,10 @@ struct Runner {
 
     // for awaiters
     auto delay(std::chrono::system_clock::duration duration) -> void;
-    auto event_wait(Event& event) -> void;
-    auto event_notify(Event& event) -> void;
+    auto event_wait(SingleEvent& event) -> void;
+    auto event_notify(SingleEvent& event) -> void;
+    auto event_wait(MultiEvent& event) -> void;
+    auto event_notify(MultiEvent& event) -> void;
     auto io_wait(IOHandle fd, bool read, bool write, IOWaitResult& result) -> void;
 
     // public

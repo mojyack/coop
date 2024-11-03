@@ -1,6 +1,4 @@
 #pragma once
-#include <vector>
-
 #include "cohandle.hpp"
 
 namespace coop {
@@ -10,11 +8,13 @@ struct Runner;
 template <class T>
 struct Promise;
 
-struct [[nodiscard]] Event {
-    Runner*            runner;
-    std::vector<Task*> waiters;
+struct [[nodiscard]] SingleEvent {
+    constexpr static auto notified = uintptr_t(-1);
 
-    auto await_ready() const -> bool { return false; }
+    Runner* runner;
+    Task*   waiter;
+
+    auto await_ready() -> bool;
     template <CoHandleLike CoHandle>
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> void {}
