@@ -10,8 +10,10 @@ if host_machine.system() == 'windows'
   ]
 endif
 
-executable('example', ['example/main.cpp'], dependencies : deps, include_directories : [include_directories('include')])
-executable('pipe-test', ['example/pipe-test.cpp'], dependencies : deps, include_directories : [include_directories('include')])
+if get_option('examples')
+  executable('example', ['example/main.cpp'], dependencies : deps, include_directories : [include_directories('include')])
+  executable('pipe-test', ['example/pipe-test.cpp'], dependencies : deps, include_directories : [include_directories('include')])
+endif
 
 install_subdir('include/coop', install_dir : 'include')
 
