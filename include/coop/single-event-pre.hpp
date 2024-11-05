@@ -12,7 +12,7 @@ struct [[nodiscard]] SingleEvent {
     constexpr static auto notified = uintptr_t(-1);
 
     Runner* runner;
-    Task*   waiter;
+    Task*   waiter = nullptr;
 
     auto await_ready() -> bool;
     template <CoHandleLike CoHandle>
