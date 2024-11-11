@@ -16,7 +16,7 @@ struct [[nodiscard]] run_args /* ParallelAwaiter */ {
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> decltype(auto);
 
-    auto detach(std::array<TaskHandle*, sizeof...(Generators)> handles = {}) -> run_args&&;
+    [[nodiscard]] auto detach(std::array<TaskHandle*, sizeof...(Generators)> handles = {}) -> run_args&&;
 
     run_args(Generators&&... generators);
 };
@@ -36,7 +36,7 @@ struct [[nodiscard]] run_vec /* MonoParallelAwaiter */ {
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> decltype(auto);
 
-    auto detach(std::vector<TaskHandle*> handles) -> run_vec&&;
+    [[nodiscard]] auto detach(std::vector<TaskHandle*> handles) -> run_vec&&;
 
     run_vec(std::vector<Generator> generators);
 };
