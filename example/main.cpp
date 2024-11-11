@@ -216,10 +216,13 @@ auto thread_event_test() -> coop::Async<void> {
 }
 
 auto os_thread_test() -> coop::Async<void> {
-    const auto blocking_func = [](int seconds) { sleep_secs(seconds); return true; };
+    // without return value
     coop::line_print("launching blocking function");
-    const auto result = co_await coop::run_blocking(blocking_func, 3);
-    coop::line_print("done result=", result);
+    co_await coop::run_blocking([](int seconds) { sleep_secs(seconds); }, 1);
+    // with return value
+    coop::line_print("launching blocking function");
+    const auto result = co_await coop::run_blocking([](int seconds) { sleep_secs(seconds); return true; }, 1);
+    coop::line_print("result=", result);
 }
 
 auto push_task_from_other_thread_test() -> coop::Async<void> {

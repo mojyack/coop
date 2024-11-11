@@ -15,11 +15,11 @@ template <class Ret, class... Args>
 template <CoHandleLike CoHandle>
 auto run_blocking<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
     thread = std::thread([this]() {
-        ret = std::apply(
-            [this](auto... args) {
-                return function(std::forward<Args>(args)...);
-            },
-            args);
+        if constexpr(!void_ret) {
+            ret = std::apply([this](auto... args) { return function(std::forward<Args>(args)...); }, args);
+        } else {
+            std::apply([this](auto... args) { function(std::forward<Args>(args)...); }, args);
+        }
         event.notify();
     });
     event.await_suspend(caller_task);
@@ -28,7 +28,9 @@ auto run_blocking<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
 template <class Ret, class... Args>
 auto run_blocking<Ret, Args...>::await_resume() -> Ret {
     // TODO: check result.error
-    return std::move(ret);
+    if constexpr(!void_ret) {
+        return std::move(ret);
+    }
 }
 
 template <class Ret, class... Args>
