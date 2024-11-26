@@ -18,6 +18,7 @@
 - atomic-event      inter-thread synchronizer
 - blocker           used to suspend runner in order to manipulate it from another thread
 - recursive-blocker blocker but more efficient when multiple threads lock
+- task-injector     blocker wrapper to add task from another thread and retrieve its result
 - assert            error check and print helper
 - pipe              pipe abstraction
 

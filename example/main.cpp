@@ -13,6 +13,7 @@
 #include <coop/recursive-blocker.hpp>
 #include <coop/runner.hpp>
 #include <coop/single-event.hpp>
+#include <coop/task-injector.hpp>
 #include <coop/thread.hpp>
 #include <coop/timer.hpp>
 #include <unistd.h>
@@ -254,6 +255,29 @@ auto push_task_from_other_thread_test() -> coop::Async<void> {
     coop::line_print("done");
 }
 
+auto task_injector_test() -> coop::Async<void> {
+    auto& runner   = *co_await coop::reveal_runner();
+    auto  injector = coop::TaskInjector(runner);
+    auto  thread   = std::thread([&injector]() {
+        const auto tid = std::this_thread::get_id();
+        // without return value
+        injector.inject_task(
+            [](decltype(tid) tid) -> coop::Async<void> {
+                coop::line_print("spawned by thread ", tid);
+                co_return;
+            }(tid));
+        // with return value
+        const auto ret = injector.inject_task(
+            [](decltype(tid) tid) -> coop::Async<int> {
+                coop::line_print("spawned by thread ", tid);
+                co_return 0x1d6b;
+            }(tid));
+        coop::line_print("result=", ret);
+    });
+    co_await coop::run_blocking([&thread]() { thread.join(); });
+    coop::line_print("done");
+}
+
 auto main(const int argc, const char* const* argv) -> int {
     if(argc == 2) {
         speed_rate = std::strtod(argv[1], NULL);
@@ -310,6 +334,10 @@ auto main(const int argc, const char* const* argv) -> int {
 
     coop::line_print("==== push task from multiple other thread ====");
     runner.push_task(push_task_from_other_thread_test<3>());
+    runner.run();
+
+    coop::line_print("==== inject task from other thread ====");
+    runner.push_task(task_injector_test());
     runner.run();
 
     return 0;
