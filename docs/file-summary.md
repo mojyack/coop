@@ -15,8 +15,9 @@
 
 
 # utilities
-- atomic-event  inter-thread synchronizer
-- blocker       used to suspend runner in order to manipulate it from another thread
-- assert        error check and print helper
-- pipe          pipe abstraction
+- atomic-event      inter-thread synchronizer
+- blocker           used to suspend runner in order to manipulate it from another thread
+- recursive-blocker blocker but more efficient when multiple threads lock
+- assert            error check and print helper
+- pipe              pipe abstraction
 

@@ -10,6 +10,7 @@
 #include <coop/parallel.hpp>
 #include <coop/pipe.hpp>
 #include <coop/promise.hpp>
+#include <coop/recursive-blocker.hpp>
 #include <coop/runner.hpp>
 #include <coop/single-event.hpp>
 #include <coop/thread.hpp>
@@ -225,22 +226,30 @@ auto os_thread_test() -> coop::Async<void> {
     coop::line_print("result=", result);
 }
 
+template <size_t n_threads>
 auto push_task_from_other_thread_test() -> coop::Async<void> {
     auto& runner  = *co_await coop::reveal_runner();
-    auto  blocker = coop::Blocker();
+    auto  blocker = std::conditional_t<n_threads == 1, coop::Blocker, coop::RecursiveBlocker>();
     blocker.start(runner);
-    auto other_thread = std::thread([&runner, &blocker]() {
-        const auto tid = std::this_thread::get_id();
-        for(auto i = 0; i < 3; i += 1) {
-            blocker.block();
-            runner.push_task([](decltype(tid) tid) -> coop::Async<void> {
-                coop::line_print("spawned by thread ", tid);
-                co_return;
-            }(tid));
-            blocker.unblock();
+    auto threads = std::array<std::thread, n_threads>();
+    for(auto& thread : threads) {
+        thread = std::thread([&runner, &blocker]() {
+            const auto tid = std::this_thread::get_id();
+            for(auto i = 0; i < 3; i += 1) {
+                blocker.block();
+                runner.push_task([](decltype(tid) tid) -> coop::Async<void> {
+                    coop::line_print("spawned by thread ", tid);
+                    co_return;
+                }(tid));
+                blocker.unblock();
+            }
+        });
+    }
+    co_await coop::run_blocking([&threads]() {
+        for(auto& thread : threads) {
+            thread.join();
         }
     });
-    co_await coop::run_blocking([&other_thread]() {other_thread.join(); return true; });
     blocker.stop();
     coop::line_print("done");
 }
@@ -296,7 +305,11 @@ auto main(const int argc, const char* const* argv) -> int {
     runner.run();
 
     coop::line_print("==== push task from other thread ====");
-    runner.push_task(push_task_from_other_thread_test());
+    runner.push_task(push_task_from_other_thread_test<1>());
+    runner.run();
+
+    coop::line_print("==== push task from multiple other thread ====");
+    runner.push_task(push_task_from_other_thread_test<3>());
     runner.run();
 
     return 0;
