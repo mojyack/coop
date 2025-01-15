@@ -111,14 +111,6 @@ inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     }
 }
 
-template <CoHandleLike CoHandle, CoHandleLike... CoHandles>
-inline auto Runner::set_runner(CoHandle& handle, CoHandles&... co_handles) -> void {
-    handle.promise().runner = this;
-    if constexpr(sizeof...(co_handles) > 0) {
-        set_runner(co_handles...);
-    }
-}
-
 inline auto Runner::push_task(const bool independent, const std::span<TaskHandle* const> user_handles, const std::span<Task> tasks) -> void {
     if(!user_handles.empty() && user_handles.size() != tasks.size()) {
         impl::error(__LINE__, " bug");
@@ -141,7 +133,6 @@ inline auto Runner::push_task(const bool independent, const std::span<TaskHandle
 template <CoHandleLike... CoHandles>
 inline auto Runner::push_task(const bool independent, const bool transfer_handle, std::span<TaskHandle* const> user_handles, CoHandles... co_handles) -> void {
     ([this, &co_handles]() { co_handles.promise().runner = this; }(), ...);
-    // set_runner(co_handles...);
     auto tasks = std::array{Task{.handle = co_handles, .handle_owned = transfer_handle}...};
     return push_task(independent, user_handles, tasks);
 }
