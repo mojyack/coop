@@ -13,13 +13,13 @@ inline auto ref_wsa() -> void {
     if(wsa_refcount.fetch_add(1) == 0) {
         auto wsadata = WSADATA();
         auto ret     = WSAStartup(WINSOCK_VERSION, &wsadata);
-        coop::assert(ret == 0, "errno=", ret);
+        ASSERT(ret == 0, "errno=", ret);
     }
 }
 
 inline auto unref_wsa() -> void {
     if(wsa_refcount.fetch_sub(1) == 1) {
-        coop::assert(WSACleanup() == 0);
+        ASSERT(WSACleanup() == 0);
     }
 }
 
@@ -47,7 +47,7 @@ struct Pipe {
         const auto fd     = socket(AF_INET, SOCK_DGRAM, 0);
         const auto addr   = build_sockaddr(port);
         const auto result = sendto(fd, (char*)buf, size, 0, (sockaddr*)(&addr), sizeof(addr));
-        assert(closesocket(fd) == 0, "errno=", WSAGetLastError());
+        ASSERT(closesocket(fd) == 0, "errno=", WSAGetLastError());
         return result;
     }
 
@@ -61,20 +61,22 @@ struct Pipe {
         fd = socket(AF_INET, SOCK_DGRAM, 0);
 
         auto addr = build_sockaddr(0);
-        assert(bind(fd, (sockaddr*)(&addr), sizeof(addr)) == 0, "errno=", WSAGetLastError());
+        ASSERT(bind(fd, (sockaddr*)(&addr), sizeof(addr)) == 0, "errno=", WSAGetLastError());
 
         auto sock_name = sockaddr_in();
         auto sock_len  = int(sizeof(sock_name));
-        assert(getsockname(fd, (sockaddr*)(&sock_name), &sock_len) == 0, "errno=", WSAGetLastError());
-        assert(sock_name.sin_addr.s_addr == htonl(INADDR_LOOPBACK), "not a loopback address addr=", sock_name.sin_addr.s_addr);
+        ASSERT(getsockname(fd, (sockaddr*)(&sock_name), &sock_len) == 0, "errno=", WSAGetLastError());
+        ASSERT(sock_name.sin_addr.s_addr == htonl(INADDR_LOOPBACK), "not a loopback address addr=", sock_name.sin_addr.s_addr);
         port = sock_name.sin_port;
     }
 
     ~Pipe() {
         if(fd != INVALID_SOCKET) {
-            assert(closesocket(fd) == 0, "errno=", WSAGetLastError());
+            ASSERT(closesocket(fd) == 0, "errno=", WSAGetLastError());
             unref_wsa();
         }
     }
 };
 } // namespace coop
+
+#include "assert.hpp" // undef macros

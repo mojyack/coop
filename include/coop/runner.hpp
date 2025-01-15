@@ -1,6 +1,5 @@
 #pragma once
 #include <cstring>
-#include <iostream>
 #include <thread>
 #include <vector>
 
@@ -8,6 +7,7 @@
 #include "poll.h"
 #endif
 
+#include "assert.hpp"
 #include "io-pre.hpp"
 #include "multi-event-pre.hpp"
 #include "runner-pre.hpp"
@@ -15,20 +15,6 @@
 
 namespace coop {
 namespace impl {
-template <class... Args>
-inline auto debug(Args... args) -> void {
-#ifdef COOP_DEBUG
-    (std::cout << ... << args) << std::endl;
-#else
-    ((void)args, ...);
-#endif
-}
-
-template <class... Args>
-inline auto error(Args... args) -> void {
-    (std::cout << ... << args) << std::endl;
-}
-
 inline auto remove_task_child(Task& child) -> bool {
     auto& children = child.parent->children;
     for(auto i = children.begin(); i != children.end(); i = std::next(i)) {
@@ -81,8 +67,7 @@ inline auto collect_resumable_tasks(Task& task, CollectContext& context) -> void
         context.poll_tasks.push_back(&task);
     } break;
     default:
-        impl::error("bug index=", reason.index());
-        break;
+        PANIC("index=", reason.index());
     }
 }
 
@@ -101,10 +86,10 @@ inline auto TaskHandle::cancel() -> bool {
 
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     for(auto& task : tasks) {
-        impl::debug("resuming task=", task, " handle=", task->handle.address());
+        DEBUG("resuming task=", task, " handle=", task->handle.address());
         current_task = task;
         task->handle.resume();
-        impl::debug("task done");
+        DEBUG("task done");
         if(task->handle.done()) {
             destroy_task(*task);
         }
@@ -112,11 +97,7 @@ inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
 }
 
 inline auto Runner::push_task(const bool independent, const std::span<TaskHandle* const> user_handles, const std::span<Task> tasks) -> void {
-    if(!user_handles.empty() && user_handles.size() != tasks.size()) {
-        impl::error(__LINE__, " bug");
-        return;
-    }
-
+    ASSERT(user_handles.empty() || user_handles.size() == tasks.size());
     const auto parent = independent ? &root : current_task;
     for(auto i = 0u; i < tasks.size(); i += 1) {
         auto& task  = parent->children.emplace_back(tasks[i]);
@@ -159,7 +140,7 @@ inline auto Runner::push_task(const std::span<TaskHandle* const> user_handles, G
 }
 
 inline auto Runner::destroy_task(Task& task) -> bool {
-    // impl::debug("destroy task=", &task, " handle=", task.handle.address());
+    TRACE("destroy task=", &task, " handle=", task.handle.address());
     if(task.handle_owned) {
         task.handle.destroy();
     }
@@ -171,26 +152,18 @@ inline auto Runner::destroy_task(Task& task) -> bool {
     case 2: {
         auto& event  = std::get<2>(task.suspend_reason);
         auto& waiter = event.event->waiter;
-        if(waiter == &task) {
-            waiter = nullptr;
-        } else {
-            impl::error(__LINE__, " bug: task=", &task);
-        }
+        ASSERT(waiter == &task, "task=", &task);
+        waiter = nullptr;
     } break;
     case 3: {
         auto& event   = std::get<3>(task.suspend_reason);
         auto& waiters = event.event->waiters;
         auto  iter    = std::ranges::find(waiters, &task);
-        if(iter != waiters.end()) {
-            waiters.erase(iter);
-        } else {
-            impl::error(__LINE__, " bug: task=", &task);
-        }
+        ASSERT(iter != waiters.end(), "task=", &task);
+        waiters.erase(iter);
     } break;
     }
-    if(!impl::remove_task_child(task)) {
-        impl::error(__LINE__, " bug: parent=", task.parent, " child=", &task);
-    }
+    ASSERT(impl::remove_task_child(task), "parent=", task.parent, " child=", &task);
     return true;
 }
 
@@ -203,59 +176,53 @@ inline auto Runner::cancel_task(TaskHandle& handle) -> bool {
 }
 
 inline auto Runner::delay(const std::chrono::system_clock::duration duration) -> void {
-    // impl::debug("delay task=", current_task, " duratoin=", duration);
+    TRACE("delay task=", current_task, " duratoin=", duration);
     current_task->suspend_reason.emplace<ByTimer>(std::chrono::system_clock::now() + duration);
 }
 
 inline auto Runner::event_wait(SingleEvent& event) -> void {
-    // impl::debug("wait ", &event, " task=", current_task);
+    TRACE("wait ", &event, " task=", current_task);
     current_task->suspend_reason.emplace<BySingleEvent>(&event);
     event.waiter = current_task;
 }
 
 inline auto Runner::event_notify(SingleEvent& event) -> void {
-    // impl::debug("notify ", &event, " size=", event.waiters.size());
+    TRACE("notify ", &event, " task=", event.waiter);
     const auto task = event.waiter;
-    if(std::get_if<BySingleEvent>(&task->suspend_reason) == nullptr) {
-        impl::error(__LINE__, " bug: task=", task, " index=", task->suspend_reason.index());
-        return;
-    }
+    ASSERT(std::get_if<BySingleEvent>(&task->suspend_reason) != nullptr, "task=", task, " index=", task->suspend_reason.index());
     task->suspend_reason.emplace<Running>();
     event.waiter = nullptr;
 }
 
 inline auto Runner::event_wait(MultiEvent& event) -> void {
-    // impl::debug("wait ", &event, " task=", current_task);
+    TRACE("wait ", &event, " task=", current_task);
     current_task->suspend_reason.emplace<ByMultiEvent>(&event);
     event.waiters.push_back(current_task);
 }
 
 inline auto Runner::event_notify(MultiEvent& event) -> void {
-    // impl::debug("notify ", &event, " size=", event.waiters.size());
+    TRACE("notify ", &event, " size=", event.waiters.size());
     for(const auto task : event.waiters) {
-        if(std::get_if<ByMultiEvent>(&task->suspend_reason) == nullptr) {
-            impl::error(__LINE__, " bug: task=", task, " index=", task->suspend_reason.index());
-            continue;
-        }
+        ASSERT(std::get_if<ByMultiEvent>(&task->suspend_reason) != nullptr, "task=", task, " index=", task->suspend_reason.index());
         task->suspend_reason.emplace<Running>();
     }
     event.waiters.clear();
 }
 
 inline auto Runner::io_wait(const IOHandle fd, const bool read, const bool write, IOWaitResult& result) -> void {
-    // impl::debug("fd=", fd, " read=", read, " write=", write);
+    TRACE("fd=", fd, " read=", read, " write=", write);
     current_task->suspend_reason.emplace<ByIO>(&result, fd, read, write);
 }
 
 inline auto Runner::run() -> void {
-    auto loop_count = size_t(0);
+    [[maybe_unused]] auto loop_count = size_t(0);
 loop:
     if(root.children.empty()) {
         current_task = &root;
         return;
     }
 
-    impl::debug("loop ", (loop_count += 1));
+    DEBUG("loop ", (loop_count += 1));
     auto context = impl::CollectContext();
     collect_resumable_tasks(root, context);
     const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(context.sleep).count();
@@ -267,22 +234,16 @@ loop:
     if(!context.poll_tasks.empty()) {
         // wait for io
         auto& pollfds = context.poll_fds;
-        impl::debug("poll start timeout=", timeout_ms);
+        DEBUG("poll start timeout=", timeout_ms);
         const auto poll_timeout = timeout_ms + 1; // +1 to correct rounding error
 #if defined(_WIN32)
         const auto nfds = WSAPoll(pollfds.data(), pollfds.size(), poll_timeout);
-        if(nfds == SOCKET_ERROR) {
-            impl::error(__LINE__, " poll failed errno=", WSAGetLastError());
-            return;
-        }
+        ASSERT(nfds != SOCKET_ERROR, "poll failed errno=", WSAGetLastError());
 #else
         const auto nfds = poll(pollfds.data(), pollfds.size(), poll_timeout);
-        if(nfds < 0 && errno != EINTR) {
-            impl::error(__LINE__, " poll failed errno=", strerror(errno));
-            return;
-        }
+        ASSERT(nfds >= 0 || errno == EINTR, "poll failed errno=", strerror(errno));
 #endif
-        impl::debug("poll done count=", nfds);
+        DEBUG("poll done count=", nfds);
 
         auto ready = std::vector<Task*>();
         for(auto i = 0, c = 0; i < int(pollfds.size()) && c < nfds; i += 1) {
@@ -292,11 +253,9 @@ loop:
             c += 1;
             auto& task = *context.poll_tasks[i];
 
-            if(const auto io = std::get_if<ByIO>(&task.suspend_reason); io == nullptr) {
-                impl::error(__LINE__, " bug");
-            } else {
-                *io->result = impl::revents_to_io_result(pollfds[i].revents);
-            }
+            const auto io = std::get_if<ByIO>(&task.suspend_reason);
+            ASSERT(io != nullptr);
+            *io->result = impl::revents_to_io_result(pollfds[i].revents);
             task.suspend_reason.emplace<Running>();
             ready.push_back(&task);
         }
@@ -304,8 +263,10 @@ loop:
         goto loop;
     }
 
-    impl::debug("sleeping ", timeout_ms);
+    DEBUG("sleeping ", timeout_ms);
     std::this_thread::sleep_for(context.sleep);
     goto loop;
 }
 } // namespace coop
+
+#include "assert.hpp" // undef macros

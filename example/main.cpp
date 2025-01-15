@@ -2,7 +2,9 @@
 #include <chrono>
 #include <cstdlib>
 
-#include <coop/assert.hpp>
+// #define COOP_DEBUG
+// #define COOP_TRACE
+
 #include <coop/blocker.hpp>
 #include <coop/generator.hpp>
 #include <coop/io.hpp>
@@ -18,10 +20,21 @@
 #include <coop/timer.hpp>
 #include <unistd.h>
 
+#define PRINT(...) coop::print(coop::format_filename(__FILE__), ":", __LINE__ __VA_OPT__(, " ", ) __VA_ARGS__)
+#define PANIC(...)                                                                                                  \
+    {                                                                                                               \
+        coop::warn("panicked at ", coop::format_filename(__FILE__), ":", __LINE__ __VA_OPT__(, " ", ) __VA_ARGS__); \
+        std::terminate();                                                                                           \
+    }
+#define ASSERT(cond, ...)                                          \
+    if(!(cond)) {                                                  \
+        PANIC("assertion failed" __VA_OPT__(, " ", ) __VA_ARGS__); \
+    }
+
 auto speed_rate = 1.0;
 
 auto delay_secs(int seconds) -> coop::Async<int> {
-    coop::line_print("delay ", seconds);
+    PRINT("delay ", seconds);
     co_await coop::sleep(std::chrono::milliseconds(size_t(1000 * seconds / speed_rate)));
     co_return seconds;
 }
@@ -31,20 +44,20 @@ auto sleep_secs(int seconds) -> void {
 }
 
 auto some_heavy_work() -> coop::Async<void> {
-    coop::line_print("doing some work...");
+    PRINT("doing some work...");
     co_await delay_secs(3);
     co_return;
 }
 
 auto some_heavy_work_result() -> coop::Async<bool> {
-    coop::line_print("doing some work...");
+    PRINT("doing some work...");
     co_await delay_secs(3);
     co_return true;
 }
 
 auto sleep_test() -> coop::Async<int> {
     {
-        coop::line_print("count = ", co_await delay_secs(3));
+        PRINT("count = ", co_await delay_secs(3));
         co_await some_heavy_work();
     }
     {
@@ -56,7 +69,7 @@ auto sleep_test() -> coop::Async<int> {
     {
         const auto results = co_await coop::run_args(some_heavy_work_result(), some_heavy_work_result());
         const auto all_ok  = std::apply([](const auto... result) { return (result && ...); }, results);
-        coop::line_print("result 1=", std::get<0>(results), " 2=", std::get<1>(results), " all_ok=", all_ok);
+        PRINT("result 1=", std::get<0>(results), " 2=", std::get<1>(results), " all_ok=", all_ok);
     }
     {
         auto works = std::vector<coop::Async<bool>>();
@@ -64,27 +77,27 @@ auto sleep_test() -> coop::Async<int> {
         works.emplace_back(some_heavy_work_result());
         const auto results = co_await coop::run_vec<coop::Async<bool>>(std::move(works));
         const auto all_ok  = std::ranges::all_of(results, [](const bool v) { return v; });
-        coop::line_print("result 1=", results[0], " 2=", results[1], " all_ok=", all_ok);
+        PRINT("result 1=", results[0], " 2=", results[1], " all_ok=", all_ok);
     }
     co_return 0;
 }
 
 auto single_event_test_waiter(coop::SingleEvent& event) -> coop::Async<void> {
-    coop::line_print("1");
+    PRINT("1");
     co_await event;
-    coop::line_print("2");
+    PRINT("2");
     co_await event;
-    coop::line_print("3");
-    co_await event;
-
-    coop::line_print("4");
-    co_await event;
-    coop::line_print("5");
-    co_await event;
-    coop::line_print("6");
+    PRINT("3");
     co_await event;
 
-    coop::line_print("done");
+    PRINT("4");
+    co_await event;
+    PRINT("5");
+    co_await event;
+    PRINT("6");
+    co_await event;
+
+    PRINT("done");
 }
 
 auto single_event_test_notifier(coop::SingleEvent& event) -> coop::Async<void> {
@@ -124,7 +137,7 @@ auto multi_event_test() -> coop::Async<void> {
     auto waiter = [](coop::MultiEvent& event) -> coop::Async<void> {
         for(auto i = 0; i < 3; i += 1) {
             co_await event;
-            coop::line_print("notified");
+            PRINT("notified");
         }
     };
     co_await coop::run_args(waiter(event), waiter(event), waiter(event)).detach();
@@ -139,11 +152,11 @@ auto io_test_reader(coop::Pipe& pipe) -> coop::Async<void> {
     auto buf = std::array<char, 16>();
     while(true) {
         const auto result = co_await coop::wait_for_file(pipe.producer(), true, false);
-        coop::assert(result.read && !result.error);
+        ASSERT(result.read && !result.error);
         const auto len = pipe.read(buf.data(), buf.size());
-        coop::assert(len >= 0);
+        ASSERT(len >= 0);
         const auto str = std::string_view(buf.data(), size_t(len));
-        coop::line_print("read: ", str);
+        PRINT("read: ", str);
         if(str == "quit") {
             co_return;
         }
@@ -160,13 +173,13 @@ auto io_test_writer(coop::Pipe& pipe) -> coop::Async<void> {
 }
 
 auto detach_test() -> coop::Async<void> {
-    coop::line_print();
+    PRINT();
     auto event = coop::SingleEvent();
-    coop::line_print();
+    PRINT();
     co_await coop::run_args(single_event_test_notifier(event)).detach();
-    coop::line_print();
+    PRINT();
     co_await coop::run_args(single_event_test_waiter(event));
-    coop::line_print();
+    PRINT();
 }
 
 auto user_handle_test() -> coop::Async<void> {
@@ -174,10 +187,10 @@ auto user_handle_test() -> coop::Async<void> {
     co_await coop::run_args(delay_secs(3)).detach({&handle});
     while(true) {
         if(handle.destroyed) {
-            coop::line_print("exitted");
+            PRINT("exitted");
             break;
         } else {
-            coop::line_print("still running");
+            PRINT("still running");
             co_await delay_secs(1);
         }
     }
@@ -186,10 +199,10 @@ auto user_handle_test() -> coop::Async<void> {
 auto task_cancel_test() -> coop::Async<void> {
     auto handle = coop::TaskHandle();
     co_await coop::run_args(delay_secs(10)).detach({&handle});
-    coop::line_print("waiting for job");
+    PRINT("waiting for job");
     co_await (delay_secs(1));
     if(!handle.destroyed) {
-        coop::line_print("still running, canceling");
+        PRINT("still running, canceling");
         handle.cancel();
     }
 }
@@ -202,29 +215,29 @@ auto thread_event_test() -> coop::Async<void> {
             event.notify();
         }
     });
-    coop::line_print("thread started");
+    PRINT("thread started");
     for(auto i = 0; i < 3; i += 1) {
         co_await event;
-        coop::line_print("notified");
+        PRINT("notified");
     }
 
     event.notify();
     event.notify();
     event.notify();
-    coop::assert(co_await event == 3);
+    ASSERT(co_await event == 3);
 
-    coop::line_print("done");
+    PRINT("done");
     thread.join();
 }
 
 auto os_thread_test() -> coop::Async<void> {
     // without return value
-    coop::line_print("launching blocking function");
+    PRINT("launching blocking function");
     co_await coop::run_blocking([](int seconds) { sleep_secs(seconds); }, 1);
     // with return value
-    coop::line_print("launching blocking function");
+    PRINT("launching blocking function");
     const auto result = co_await coop::run_blocking([](int seconds) { sleep_secs(seconds); return true; }, 1);
-    coop::line_print("result=", result);
+    PRINT("result=", result);
 }
 
 template <size_t n_threads>
@@ -239,7 +252,7 @@ auto push_task_from_other_thread_test() -> coop::Async<void> {
             for(auto i = 0; i < 3; i += 1) {
                 blocker.block();
                 runner.push_task([](decltype(tid) tid) -> coop::Async<void> {
-                    coop::line_print("spawned by thread ", tid);
+                    PRINT("spawned by thread ", tid);
                     co_return;
                 }(tid));
                 blocker.unblock();
@@ -252,7 +265,7 @@ auto push_task_from_other_thread_test() -> coop::Async<void> {
         }
     });
     blocker.stop();
-    coop::line_print("done");
+    PRINT("done");
 }
 
 auto task_injector_test() -> coop::Async<void> {
@@ -263,80 +276,80 @@ auto task_injector_test() -> coop::Async<void> {
         // without return value
         injector.inject_task(
             [](decltype(tid) tid) -> coop::Async<void> {
-                coop::line_print("spawned by thread ", tid);
+                PRINT("spawned by thread ", tid);
                 co_return;
             }(tid));
         // with return value
         const auto ret = injector.inject_task(
             [](decltype(tid) tid) -> coop::Async<int> {
-                coop::line_print("spawned by thread ", tid);
+                PRINT("spawned by thread ", tid);
                 co_return 0x1d6b;
             }(tid));
-        coop::line_print("result=", ret);
+        PRINT("result=", ret);
     });
     co_await coop::run_blocking([&thread]() { thread.join(); });
-    coop::line_print("done");
+    PRINT("done");
 }
 
 auto main(const int argc, const char* const* argv) -> int {
     if(argc == 2) {
         speed_rate = std::strtod(argv[1], NULL);
-        coop::assert(speed_rate != 0.0);
+        ASSERT(speed_rate != 0.0);
     }
 
     auto runner = coop::Runner();
 
-    coop::line_print("==== delay ====");
+    PRINT("==== delay ====");
     runner.push_task(sleep_test());
     runner.run();
 
-    coop::line_print("==== single event await ====");
+    PRINT("==== single event await ====");
     auto event = coop::SingleEvent();
     runner.push_task(single_event_test_waiter(event), single_event_test_notifier(event));
     runner.run();
 
-    coop::line_print("==== single event cancel ====");
+    PRINT("==== single event cancel ====");
     runner.push_task(event_cancel_test());
     runner.run();
 
-    coop::line_print("==== multi event ====");
+    PRINT("==== multi event ====");
     runner.push_task(multi_event_test());
     runner.run();
 
-    coop::line_print("==== io await ====");
+    PRINT("==== io await ====");
     auto pipe = coop::Pipe();
     runner.push_task(io_test_reader(pipe), io_test_writer(pipe));
     runner.run();
 
-    coop::line_print("==== detached task ====");
+    PRINT("==== detached task ====");
     runner.push_task(detach_test());
     runner.run();
 
-    coop::line_print("==== task handle ====");
+    PRINT("==== task handle ====");
     runner.push_task(user_handle_test());
     runner.run();
 
-    coop::line_print("==== task cancel ====");
+    PRINT("==== task cancel ====");
     runner.push_task(task_cancel_test());
     runner.run();
 
-    coop::line_print("==== thread-safe event ====");
+    PRINT("==== thread-safe event ====");
     runner.push_task(thread_event_test());
     runner.run();
 
-    coop::line_print("==== blocking adapter ====");
+    PRINT("==== blocking adapter ====");
     runner.push_task(os_thread_test());
     runner.run();
 
-    coop::line_print("==== push task from other thread ====");
+    PRINT("==== push task from other thread ====");
     runner.push_task(push_task_from_other_thread_test<1>());
     runner.run();
 
-    coop::line_print("==== push task from multiple other thread ====");
+    PRINT("==== push task from multiple other thread ====");
     runner.push_task(push_task_from_other_thread_test<3>());
     runner.run();
 
-    coop::line_print("==== inject task from other thread ====");
+    PRINT("==== inject task from other thread ====");
     runner.push_task(task_injector_test());
     runner.run();
 
