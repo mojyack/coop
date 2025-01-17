@@ -4,14 +4,15 @@
 #include <vector>
 
 #if !defined(_WIN32)
-#include "poll.h"
+#include <poll.h>
 #endif
 
-#include "assert.hpp"
 #include "io-pre.hpp"
 #include "multi-event-pre.hpp"
 #include "runner-pre.hpp"
 #include "single-event-pre.hpp"
+
+#include "assert.hpp"
 
 namespace coop {
 namespace impl {
