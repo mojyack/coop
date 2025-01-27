@@ -1,5 +1,6 @@
 #pragma once
 #include <tuple>
+#include <vector>
 
 #include "generator-pre.hpp"
 #include "runner-pre.hpp"
