@@ -1,0 +1,5 @@
+#pragma pop_macro("PRINT")
+#pragma pop_macro("DEBUG")
+#pragma pop_macro("TRACE")
+#pragma pop_macro("PANIC")
+#pragma pop_macro("ASSERT")

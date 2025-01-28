@@ -7,7 +7,7 @@
 
 namespace coop {
 template <CoGeneratorLike... Generators>
-struct [[nodiscard]] run_args /* ParallelAwaiter */ {
+struct [[nodiscard]] ParallelArgsAwaiter /* ParallelAwaiter */ {
     std::tuple<Generators...>                      generators;
     std::array<TaskHandle*, sizeof...(Generators)> user_handles = {};
     bool                                           independent  = false;
@@ -17,17 +17,16 @@ struct [[nodiscard]] run_args /* ParallelAwaiter */ {
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> decltype(auto);
 
-    [[nodiscard]] auto detach(std::array<TaskHandle*, sizeof...(Generators)> handles = {}) -> run_args&&;
+    [[nodiscard]] auto detach(std::array<TaskHandle*, sizeof...(Generators)> handles = {}) -> ParallelArgsAwaiter&&;
 
-    run_args(Generators&&... generators);
+    ParallelArgsAwaiter(Generators&&... generators);
 };
 
-// P1814R0, merged in llvm-19
-// template <CoGeneratorLike... Generators>
-// using run_args = ParallelAwaiter<Generators...>;
+template <CoGeneratorLike... Generators>
+using run_args = ParallelArgsAwaiter<Generators...>;
 
 template <CoGeneratorLike Generator>
-struct [[nodiscard]] run_vec /* MonoParallelAwaiter */ {
+struct [[nodiscard]] ParallelVecAwaiter {
     std::vector<Generator>   generators;
     std::vector<TaskHandle*> user_handles = {};
     bool                     independent  = false;
@@ -37,11 +36,11 @@ struct [[nodiscard]] run_vec /* MonoParallelAwaiter */ {
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> decltype(auto);
 
-    [[nodiscard]] auto detach(std::vector<TaskHandle*> handles) -> run_vec&&;
+    [[nodiscard]] auto detach(std::vector<TaskHandle*> handles) -> ParallelVecAwaiter&&;
 
-    run_vec(std::vector<Generator> generators);
+    ParallelVecAwaiter(std::vector<Generator> generators);
 };
 
-// template <CoGeneratorLike Generator>
-// using run_vec = MonoParallelAwaiter<Generator>;
+template <CoGeneratorLike Generator>
+using run_vec = ParallelVecAwaiter<Generator>;
 } // namespace coop

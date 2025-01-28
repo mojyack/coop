@@ -6,7 +6,7 @@
 
 namespace coop {
 template <class Ret, class... Args>
-struct [[nodiscard]] run_blocking /* ThreadAdapter */ {
+struct [[nodiscard]] ThreadAdapter {
     constexpr static auto void_ret = std::is_same_v<Ret, void>;
     using RetStorage               = std::conditional_t<!void_ret, Ret, std::tuple<>>;
 
@@ -21,7 +21,10 @@ struct [[nodiscard]] run_blocking /* ThreadAdapter */ {
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() -> Ret;
 
-    run_blocking(std::function<Ret(Args...)> function, Args... args);
-    ~run_blocking();
+    ThreadAdapter(std::function<Ret(Args...)> function, Args... args);
+    ~ThreadAdapter();
 };
+
+template <class Ret, class... Args>
+using run_blocking = ThreadAdapter<Ret, Args...>;
 } // namespace coop

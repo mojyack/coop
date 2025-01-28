@@ -1,4 +1,5 @@
 #include <array>
+#include <print>
 #include <thread>
 
 #include <coop/pipe.hpp>
@@ -13,8 +14,8 @@ auto main() -> int {
     });
     auto t2   = std::thread([&pipe]() {
         auto buf = std::array<char, 8>();
-        coop::print(std::string_view(buf.data(), pipe.read(&buf, buf.size())));
-        coop::print(std::string_view(buf.data(), pipe.read(&buf, buf.size())));
+        std::println("{}", std::string_view(buf.data(), pipe.read(&buf, buf.size())));
+        std::println("{}", std::string_view(buf.data(), pipe.read(&buf, buf.size())));
     });
     t1.join();
     t2.join();

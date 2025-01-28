@@ -6,13 +6,13 @@
 
 namespace coop {
 template <CoGeneratorLike... Generators>
-auto run_args<Generators...>::await_ready() const -> bool {
+auto ParallelArgsAwaiter<Generators...>::await_ready() const -> bool {
     return false;
 }
 
 template <CoGeneratorLike... Generators>
 template <CoHandleLike CoHandle>
-auto run_args<Generators...>::await_suspend(CoHandle caller_task) -> void {
+auto ParallelArgsAwaiter<Generators...>::await_suspend(CoHandle caller_task) -> void {
     auto& runner = *caller_task.promise().runner;
     std::apply(
         [this, &runner](auto&... generators) {
@@ -29,7 +29,7 @@ auto run_args<Generators...>::await_suspend(CoHandle caller_task) -> void {
 }
 
 template <CoGeneratorLike... Generators>
-auto run_args<Generators...>::await_resume() const -> decltype(auto) {
+auto ParallelArgsAwaiter<Generators...>::await_resume() const -> decltype(auto) {
     // printf("resume %p\n", std::get<0>(generators).handle.address());
     constexpr auto is_all_has_value = (PromiseWithRetValue<decltype(Generators::handle.promise())> && ...);
     if constexpr(is_all_has_value) {
@@ -45,25 +45,25 @@ auto run_args<Generators...>::await_resume() const -> decltype(auto) {
 }
 
 template <CoGeneratorLike... Generators>
-auto run_args<Generators...>::detach(std::array<TaskHandle*, sizeof...(Generators)> handles) -> run_args&& {
+auto ParallelArgsAwaiter<Generators...>::detach(std::array<TaskHandle*, sizeof...(Generators)> handles) -> ParallelArgsAwaiter&& {
     user_handles = handles;
     independent  = true;
     return std::move(*this);
 }
 
 template <CoGeneratorLike... Generators>
-run_args<Generators...>::run_args(Generators&&... generators)
+ParallelArgsAwaiter<Generators...>::ParallelArgsAwaiter(Generators&&... generators)
     : generators(std::forward<Generators&&>(generators)...) {
 }
 
 template <CoGeneratorLike Generator>
-auto run_vec<Generator>::await_ready() const -> bool {
+auto ParallelVecAwaiter<Generator>::await_ready() const -> bool {
     return false;
 }
 
 template <CoGeneratorLike Generator>
 template <CoHandleLike CoHandle>
-auto run_vec<Generator>::await_suspend(CoHandle caller_task) -> void {
+auto ParallelVecAwaiter<Generator>::await_suspend(CoHandle caller_task) -> void {
     auto& runner  = *caller_task.promise().runner;
     auto  handles = std::vector<decltype(Generator::handle)>();
     for(auto& generator : generators) {
@@ -79,7 +79,7 @@ auto run_vec<Generator>::await_suspend(CoHandle caller_task) -> void {
 }
 
 template <CoGeneratorLike Generator>
-auto run_vec<Generator>::await_resume() const -> decltype(auto) {
+auto ParallelVecAwaiter<Generator>::await_resume() const -> decltype(auto) {
     if constexpr(PromiseWithRetValue<decltype(Generator::handle.promise())>) {
         auto ret = std::vector<decltype(Generator::handle.promise().data)>();
         if(independent) {
@@ -95,14 +95,14 @@ auto run_vec<Generator>::await_resume() const -> decltype(auto) {
 }
 
 template <CoGeneratorLike Generators>
-auto run_vec<Generators>::detach(std::vector<TaskHandle*> handles) -> run_vec&& {
+auto ParallelVecAwaiter<Generators>::detach(std::vector<TaskHandle*> handles) -> ParallelVecAwaiter&& {
     user_handles = std::move(handles);
     independent  = true;
     return std::move(*this);
 }
 
 template <CoGeneratorLike Generator>
-run_vec<Generator>::run_vec(std::vector<Generator> generators)
+ParallelVecAwaiter<Generator>::ParallelVecAwaiter(std::vector<Generator> generators)
     : generators(std::move(generators)) {
 }
 } // namespace coop

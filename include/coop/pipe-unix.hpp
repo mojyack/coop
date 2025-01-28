@@ -5,7 +5,7 @@
 
 #include <unistd.h>
 
-#include "assert.hpp"
+#include "assert-def.hpp"
 
 namespace coop {
 struct Pipe {
@@ -28,7 +28,7 @@ struct Pipe {
     }
 
     Pipe() {
-        ASSERT(pipe(fds.data()) == 0, "errno=", errno, " ", std::strerror(errno));
+        ASSERT(pipe(fds.data()) == 0, "errno={}({})", errno, std::strerror(errno));
     }
 
     ~Pipe() {
@@ -40,4 +40,4 @@ struct Pipe {
 };
 } // namespace coop
 
-#include "assert.hpp" // undef macros
+#include "assert-undef.hpp"

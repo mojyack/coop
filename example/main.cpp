@@ -20,21 +20,16 @@
 #include <coop/timer.hpp>
 #include <unistd.h>
 
-#define PRINT(...) coop::print(coop::format_filename(__FILE__), ":", __LINE__ __VA_OPT__(, " ", ) __VA_ARGS__)
-#define PANIC(...)                                                                                                  \
-    {                                                                                                               \
-        coop::warn("panicked at ", coop::format_filename(__FILE__), ":", __LINE__ __VA_OPT__(, " ", ) __VA_ARGS__); \
-        std::terminate();                                                                                           \
-    }
-#define ASSERT(cond, ...)                                          \
-    if(!(cond)) {                                                  \
-        PANIC("assertion failed" __VA_OPT__(, " ", ) __VA_ARGS__); \
-    }
+#include <coop/assert-def.hpp> // do not do this
+
+auto format_filename(const std::string_view filename) -> std::string_view {
+    return coop::format_filename(filename);
+}
 
 auto speed_rate = 1.0;
 
 auto delay_secs(int seconds) -> coop::Async<int> {
-    PRINT("delay ", seconds);
+    PRINT("delay {}", seconds);
     co_await coop::sleep(std::chrono::milliseconds(size_t(1000 * seconds / speed_rate)));
     co_return seconds;
 }
@@ -57,7 +52,7 @@ auto some_heavy_work_result() -> coop::Async<bool> {
 
 auto sleep_test() -> coop::Async<int> {
     {
-        PRINT("count = ", co_await delay_secs(3));
+        PRINT("count={}", co_await delay_secs(3));
         co_await some_heavy_work();
     }
     {
@@ -69,7 +64,7 @@ auto sleep_test() -> coop::Async<int> {
     {
         const auto results = co_await coop::run_args(some_heavy_work_result(), some_heavy_work_result());
         const auto all_ok  = std::apply([](const auto... result) { return (result && ...); }, results);
-        PRINT("result 1=", std::get<0>(results), " 2=", std::get<1>(results), " all_ok=", all_ok);
+        PRINT("result 1={} 2={} all_ok={}", std::get<0>(results), std::get<1>(results), all_ok);
     }
     {
         auto works = std::vector<coop::Async<bool>>();
@@ -77,7 +72,7 @@ auto sleep_test() -> coop::Async<int> {
         works.emplace_back(some_heavy_work_result());
         const auto results = co_await coop::run_vec<coop::Async<bool>>(std::move(works));
         const auto all_ok  = std::ranges::all_of(results, [](const bool v) { return v; });
-        PRINT("result 1=", results[0], " 2=", results[1], " all_ok=", all_ok);
+        PRINT("result 1={} 2={} all_ok={}", results[0], results[1], all_ok);
     }
     co_return 0;
 }
@@ -156,7 +151,7 @@ auto io_test_reader(coop::Pipe& pipe) -> coop::Async<void> {
         const auto len = pipe.read(buf.data(), buf.size());
         ASSERT(len >= 0);
         const auto str = std::string_view(buf.data(), size_t(len));
-        PRINT("read: ", str);
+        PRINT("read: {}", str);
         if(str == "quit") {
             co_return;
         }
@@ -237,7 +232,7 @@ auto os_thread_test() -> coop::Async<void> {
     // with return value
     PRINT("launching blocking function");
     const auto result = co_await coop::run_blocking([](int seconds) { sleep_secs(seconds); return true; }, 1);
-    PRINT("result=", result);
+    PRINT("result={}", result);
 }
 
 template <size_t n_threads>
@@ -252,7 +247,7 @@ auto push_task_from_other_thread_test() -> coop::Async<void> {
             for(auto i = 0; i < 3; i += 1) {
                 blocker.block();
                 runner.push_task([](decltype(tid) tid) -> coop::Async<void> {
-                    PRINT("spawned by thread ", tid);
+                    PRINT("spawned by thread {}", tid);
                     co_return;
                 }(tid));
                 blocker.unblock();
@@ -276,16 +271,16 @@ auto task_injector_test() -> coop::Async<void> {
         // without return value
         injector.inject_task(
             [](decltype(tid) tid) -> coop::Async<void> {
-                PRINT("spawned by thread ", tid);
+                PRINT("spawned by thread {}", tid);
                 co_return;
             }(tid));
         // with return value
         const auto ret = injector.inject_task(
             [](decltype(tid) tid) -> coop::Async<int> {
-                PRINT("spawned by thread ", tid);
+                PRINT("spawned by thread {}", tid);
                 co_return 0x1d6b;
             }(tid));
-        PRINT("result=", ret);
+        PRINT("result={}", ret);
     });
     co_await coop::run_blocking([&thread]() { thread.join(); });
     PRINT("done");

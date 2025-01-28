@@ -7,13 +7,13 @@
 
 namespace coop {
 template <class Ret, class... Args>
-auto run_blocking<Ret, Args...>::await_ready() const -> bool {
+auto ThreadAdapter<Ret, Args...>::await_ready() const -> bool {
     return false;
 }
 
 template <class Ret, class... Args>
 template <CoHandleLike CoHandle>
-auto run_blocking<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
+auto ThreadAdapter<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
     thread = std::thread([this]() {
         if constexpr(!void_ret) {
             ret = std::apply([this](auto... args) { return function(std::forward<Args>(args)...); }, args);
@@ -26,7 +26,7 @@ auto run_blocking<Ret, Args...>::await_suspend(CoHandle caller_task) -> void {
 }
 
 template <class Ret, class... Args>
-auto run_blocking<Ret, Args...>::await_resume() -> Ret {
+auto ThreadAdapter<Ret, Args...>::await_resume() -> Ret {
     // TODO: check result.error
     if constexpr(!void_ret) {
         return std::move(ret);
@@ -34,20 +34,20 @@ auto run_blocking<Ret, Args...>::await_resume() -> Ret {
 }
 
 template <class Ret, class... Args>
-run_blocking<Ret, Args...>::run_blocking(std::function<Ret(Args...)> function, Args... args)
+ThreadAdapter<Ret, Args...>::ThreadAdapter(std::function<Ret(Args...)> function, Args... args)
     : function(function),
       args(std::forward<Args>(args)...) {
 }
 
 template <class Ret, class... Args>
-run_blocking<Ret, Args...>::~run_blocking() {
+ThreadAdapter<Ret, Args...>::~ThreadAdapter() {
     if(thread.joinable()) {
         thread.join();
     }
 }
 
 template <class Func, class... Args>
-    requires std::invocable<Func, Args...>
-run_blocking(Func function, Args... args)
-    -> run_blocking<std::invoke_result_t<Func, Args...>, Args...>;
+// requires std::invocable<Func, Args...> // crashes clang
+ThreadAdapter(Func function, Args... args)
+    -> ThreadAdapter<std::invoke_result_t<Func, Args...>, Args...>;
 } // namespace coop
