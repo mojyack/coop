@@ -1,11 +1,7 @@
 // warning: this file is not intended to be used by users
 // include this file twice to avoid leaking macros to users
 #pragma once
-#include <format>
-
-// allow passing pointer to std::format without (void*) cast
-template <class T, class CharT>
-struct std::formatter<T*, CharT> : std::formatter<void*, CharT> {};
+#include <string_view>
 
 namespace coop {
 inline auto format_filename(const std::string_view filename) -> std::string_view {

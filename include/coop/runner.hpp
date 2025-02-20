@@ -154,18 +154,18 @@ inline auto Runner::destroy_task(Task& task) -> bool {
     case 2: {
         auto& event  = std::get<2>(task.suspend_reason);
         auto& waiter = event.event->waiter;
-        ASSERT(waiter == &task, "task={}", &task);
+        ASSERT(waiter == &task, "task={}", (void*)&task);
         waiter = nullptr;
     } break;
     case 3: {
         auto& event   = std::get<3>(task.suspend_reason);
         auto& waiters = event.event->waiters;
         auto  iter    = std::ranges::find(waiters, &task);
-        ASSERT(iter != waiters.end(), "task={}", &task);
+        ASSERT(iter != waiters.end(), "task={}", (void*)&task);
         waiters.erase(iter);
     } break;
     }
-    ASSERT(impl::remove_task_child(task), "parent={} child={}", task.parent, &task);
+    ASSERT(impl::remove_task_child(task), "parent={} child={}", (void*)task.parent, (void*)&task);
     return true;
 }
 
@@ -191,7 +191,7 @@ inline auto Runner::event_wait(SingleEvent& event) -> void {
 inline auto Runner::event_notify(SingleEvent& event) -> void {
     TRACE("event_notify(single) task={} event={} event.waiter={}", current_task, &event, event.waiter);
     const auto task = event.waiter;
-    ASSERT(std::get_if<BySingleEvent>(&task->suspend_reason) != nullptr, "task={} index={}", task, task->suspend_reason.index());
+    ASSERT(std::get_if<BySingleEvent>(&task->suspend_reason) != nullptr, "task={} index={}", (void*)task, task->suspend_reason.index());
     task->suspend_reason.emplace<Running>();
     event.waiter = nullptr;
 }
@@ -206,7 +206,7 @@ inline auto Runner::event_notify(MultiEvent& event) -> void {
     TRACE("event_notify(multi) task={} event={}", current_task, &event);
     for(const auto task : event.waiters) {
         TRACE("  target {}", task);
-        ASSERT(std::get_if<ByMultiEvent>(&task->suspend_reason) != nullptr, "task={} index={}", task, task->suspend_reason.index());
+        ASSERT(std::get_if<ByMultiEvent>(&task->suspend_reason) != nullptr, "task={} index={}", (void*)task, task->suspend_reason.index());
         task->suspend_reason.emplace<Running>();
     }
     event.waiters.clear();
