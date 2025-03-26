@@ -203,6 +203,8 @@ auto task_cancel_test() -> coop::Async<void> {
         PRINT("still running, canceling");
         handle.cancel();
     }
+
+    // TODO: test dissociate
 }
 
 auto thread_event_test() -> coop::Async<void> {

@@ -55,6 +55,7 @@ struct TaskHandle {
     bool    destroyed;
 
     auto cancel() -> bool;
+    auto dissociate() -> void;
 };
 
 struct Task {

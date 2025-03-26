@@ -86,6 +86,13 @@ inline auto TaskHandle::cancel() -> bool {
     return runner->cancel_task(*this);
 }
 
+inline auto TaskHandle::dissociate() -> void {
+    if(task == nullptr) {
+        return;
+    }
+    task->user_handle = nullptr;
+}
+
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     for(auto& task : tasks) {
         DEBUG("resuming task={} handle={}", task, task->handle.address());
