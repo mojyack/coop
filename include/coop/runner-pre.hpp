@@ -74,8 +74,6 @@ struct Runner {
     auto run_tasks(std::span<Task*> tasks) -> void;
 
     // internal
-    template <CoHandleLike CoHandle, CoHandleLike... CoHandles>
-    auto set_runner(CoHandle& handle, CoHandles&... handles) -> void;
     auto push_task(bool independent, std::span<TaskHandle* const> user_handles, const std::span<Task> tasks) -> void;
     template <CoHandleLike... CoHandles>
     auto push_task(bool independent, bool transfer_handle, std::span<TaskHandle* const> user_handles, CoHandles... handles) -> void;
