@@ -20,9 +20,9 @@ struct [[nodiscard]] CoGenerator {
     }
 
     template <CoHandleLike CoHandle>
-    auto await_suspend(CoHandle caller_task) const -> void {
+    auto await_suspend(CoHandle caller_task) -> void {
         auto& runner = *caller_task.promise().runner;
-        runner.push_task(false, false, {}, handle);
+        runner.push_task(false, handle, nullptr);
     }
 
     auto await_resume() const -> decltype(auto) {

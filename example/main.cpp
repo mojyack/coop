@@ -116,11 +116,9 @@ auto single_event_test_notifier(coop::SingleEvent& event) -> coop::Async<void> {
 auto event_cancel_test() -> coop::Async<void> {
     auto event  = coop::SingleEvent();
     auto handle = coop::TaskHandle();
-    co_await coop::run_args(
-        [](coop::SingleEvent& event) -> coop::Async<void> {
-            co_await event;
-        }(event))
-        .detach({&handle});
+    (co_await coop::reveal_runner())->push_task([](coop::SingleEvent& event) -> coop::Async<void> {
+        co_await event;
+    }(event));
     co_await coop::sleep(std::chrono::seconds(1));
     handle.cancel();
     event.notify();
@@ -135,7 +133,12 @@ auto multi_event_test() -> coop::Async<void> {
             PRINT("notified");
         }
     };
-    co_await coop::run_args(waiter(event), waiter(event), waiter(event)).detach();
+    {
+        auto& runner = *co_await coop::reveal_runner();
+        runner.push_task(waiter(event));
+        runner.push_task(waiter(event));
+        runner.push_task(waiter(event));
+    }
 
     for(auto i = 0; i < 3; i += 1) {
         co_await delay_secs(1);
@@ -171,7 +174,7 @@ auto detach_test() -> coop::Async<void> {
     PRINT();
     auto event = coop::SingleEvent();
     PRINT();
-    co_await coop::run_args(single_event_test_notifier(event)).detach();
+    (co_await coop::reveal_runner())->push_task(single_event_test_notifier(event));
     PRINT();
     co_await coop::run_args(single_event_test_waiter(event));
     PRINT();
@@ -179,7 +182,7 @@ auto detach_test() -> coop::Async<void> {
 
 auto user_handle_test() -> coop::Async<void> {
     auto handle = coop::TaskHandle();
-    co_await coop::run_args(delay_secs(3)).detach({&handle});
+    (co_await coop::reveal_runner())->push_task(delay_secs(3), &handle);
     while(true) {
         if(handle.destroyed) {
             PRINT("exitted");
@@ -193,7 +196,7 @@ auto user_handle_test() -> coop::Async<void> {
 
 auto task_cancel_test() -> coop::Async<void> {
     auto handle = coop::TaskHandle();
-    co_await coop::run_args(delay_secs(10)).detach({&handle});
+    (co_await coop::reveal_runner())->push_task(delay_secs(10), &handle);
     PRINT("waiting for job");
     co_await (delay_secs(1));
     if(!handle.destroyed) {
@@ -300,7 +303,8 @@ auto main(const int argc, const char* const* argv) -> int {
 
     PRINT("==== single event await ====");
     auto event = coop::SingleEvent();
-    runner.push_task(single_event_test_waiter(event), single_event_test_notifier(event));
+    runner.push_task(single_event_test_waiter(event));
+    runner.push_task(single_event_test_notifier(event));
     runner.run();
 
     PRINT("==== single event cancel ====");
@@ -313,7 +317,8 @@ auto main(const int argc, const char* const* argv) -> int {
 
     PRINT("==== io await ====");
     auto pipe = coop::Pipe();
-    runner.push_task(io_test_reader(pipe), io_test_writer(pipe));
+    runner.push_task(io_test_reader(pipe));
+    runner.push_task(io_test_writer(pipe));
     runner.run();
 
     PRINT("==== detached task ====");

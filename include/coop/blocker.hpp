@@ -6,15 +6,15 @@
 
 namespace coop {
 inline auto Blocker::start(coop::Runner& runner) -> void {
-    const auto handles = {&handle};
-    const auto task    = [](Blocker& self) -> coop::Async<void> {
-        loop:
-            co_await self.do_block_event; // wait for block()
-            self.blocking_flag.notify();  // indicate runner is blocked
-            self.do_unblock_event.wait(); // wait for unblock()
-            goto loop;
-    };
-    runner.push_task(handles, task(*this));
+    runner.push_task(
+        [](Blocker& self) -> coop::Async<void> {
+            loop:
+                co_await self.do_block_event; // wait for block()
+                self.blocking_flag.notify();  // indicate runner is blocked
+                self.do_unblock_event.wait(); // wait for unblock()
+                goto loop;
+        }(*this),
+        &handle);
 }
 
 inline auto Blocker::stop() -> void {

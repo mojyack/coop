@@ -98,47 +98,28 @@ inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     }
 }
 
-inline auto Runner::push_task(const bool independent, const std::span<TaskHandle* const> user_handles, const std::span<Task> tasks) -> void {
-    ASSERT(user_handles.empty() || user_handles.size() == tasks.size());
-    const auto parent = independent ? &root : current_task;
-    for(auto i = 0u; i < tasks.size(); i += 1) {
-        auto& task  = parent->children.emplace_back(tasks[i]);
-        task.parent = parent;
-        if(user_handles.empty() || user_handles[i] == nullptr) {
-            continue;
-        }
-        auto& handle     = *user_handles[i];
-        task.user_handle = &handle;
-        handle           = TaskHandle{.task = &task, .runner = this, .destroyed = false};
-    }
-}
-
-template <CoHandleLike... CoHandles>
-inline auto Runner::push_task(const bool independent, const bool transfer_handle, std::span<TaskHandle* const> user_handles, CoHandles... co_handles) -> void {
-    ([this, &co_handles]() { co_handles.promise().runner = this; }(), ...);
-    auto tasks = std::array{Task{.handle = co_handles, .handle_owned = transfer_handle}...};
-    return push_task(independent, user_handles, tasks);
-}
-
 template <CoHandleLike CoHandle>
-inline auto Runner::push_task(const bool independent, const bool transfer_handle, std::span<TaskHandle* const> user_handles, const std::span<CoHandle> co_handles) -> void {
-    auto tasks = std::vector<Task>();
-    for(auto& handle : co_handles) {
-        handle.promise().runner = this;
-        tasks.emplace_back(Task{.handle = handle, .handle_owned = transfer_handle});
+inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHandle* const user_handle) -> void {
+    handle.promise().runner = this;
+
+    auto& parent = independent ? root : *current_task;
+    // transfer cohandle to runner if independent
+    // since child task may live longer than this generator
+    auto& task = parent.children.emplace_back(Task{
+        .handle       = independent ? std::exchange(handle, nullptr) : handle,
+        .parent       = &parent,
+        .user_handle  = user_handle,
+        .handle_owned = independent,
+    });
+
+    if(user_handle != nullptr) {
+        *user_handle = TaskHandle{.task = &task, .runner = this, .destroyed = false};
     }
-    return push_task(independent, user_handles, tasks);
 }
 
-template <CoGeneratorLike... Generators>
-inline auto Runner::push_task(Generators... generators) -> void {
-    push_task({}, std::forward<Generators>(generators)...);
-}
-
-template <CoGeneratorLike... Generators>
-inline auto Runner::push_task(const std::span<TaskHandle* const> user_handles, Generators... generators) -> void {
-    push_task(true, true, user_handles, generators.handle...);
-    ([&generators]() { generators.handle = nullptr; }(), ...);
+template <CoGeneratorLike Generator>
+auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> void {
+    push_task(true, generator.handle, user_handle);
 }
 
 inline auto Runner::destroy_task(Task& task) -> bool {

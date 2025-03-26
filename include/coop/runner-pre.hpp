@@ -74,11 +74,8 @@ struct Runner {
     auto run_tasks(std::span<Task*> tasks) -> void;
 
     // internal
-    auto push_task(bool independent, std::span<TaskHandle* const> user_handles, const std::span<Task> tasks) -> void;
-    template <CoHandleLike... CoHandles>
-    auto push_task(bool independent, bool transfer_handle, std::span<TaskHandle* const> user_handles, CoHandles... handles) -> void;
     template <CoHandleLike CoHandle>
-    auto push_task(bool independent, bool transfer_handle, std::span<TaskHandle* const> user_handles, std::span<CoHandle> handles) -> void;
+    auto push_task(bool independent, CoHandle& handle, TaskHandle* user_handle) -> void;
     auto destroy_task(Task& task) -> bool;
 
     // for awaiters
@@ -90,10 +87,8 @@ struct Runner {
     auto io_wait(IOHandle fd, bool read, bool write, IOWaitResult& result) -> void;
 
     // public
-    template <CoGeneratorLike... Generators>
-    auto push_task(Generators... generators) -> void;
-    template <CoGeneratorLike... Generators>
-    auto push_task(std::span<TaskHandle* const> user_handles, Generators... generators) -> void;
+    template <CoGeneratorLike Generator>
+    auto push_task(Generator generator, TaskHandle* user_handle = nullptr) -> void;
     auto cancel_task(TaskHandle& handle) -> bool;
     auto run() -> void;
 };
