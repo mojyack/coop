@@ -91,6 +91,7 @@ inline auto TaskHandle::dissociate() -> void {
         return;
     }
     task->user_handle = nullptr;
+    task              = nullptr;
 }
 
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
