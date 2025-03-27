@@ -95,7 +95,7 @@ inline auto TaskHandle::dissociate() -> void {
 
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     for(auto& task : tasks) {
-        DEBUG("resuming task={} handle={}", task, task->handle.address());
+        DEBUG("resuming task={} handle={}", (void*)task, task->handle.address());
         current_task = task;
         task->handle.resume();
         DEBUG("task done");
@@ -130,7 +130,7 @@ auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> vo
 }
 
 inline auto Runner::destroy_task(Task& task) -> bool {
-    TRACE("destroy task={} handle={}", &task, task.handle.address());
+    TRACE("destroy task={} handle={}", (void*)&task, task.handle.address());
     if(task.handle_owned) {
         task.handle.destroy();
     }
@@ -166,18 +166,18 @@ inline auto Runner::cancel_task(TaskHandle& handle) -> bool {
 }
 
 inline auto Runner::delay(const std::chrono::system_clock::duration duration) -> void {
-    TRACE("delay task={} duratoin={}", current_task, duration);
+    TRACE("delay task={} duratoin={}", (void*)current_task, duration);
     current_task->suspend_reason.emplace<ByTimer>(std::chrono::system_clock::now() + duration);
 }
 
 inline auto Runner::event_wait(SingleEvent& event) -> void {
-    TRACE("event_wait(single) task={} event={}", current_task, &event);
+    TRACE("event_wait(single) task={} event={}", (void*)current_task, (void*)&event);
     current_task->suspend_reason.emplace<BySingleEvent>(&event);
     event.waiter = current_task;
 }
 
 inline auto Runner::event_notify(SingleEvent& event) -> void {
-    TRACE("event_notify(single) task={} event={} event.waiter={}", current_task, &event, event.waiter);
+    TRACE("event_notify(single) task={} event={} event.waiter={}", (void*)current_task, (void*)&event, (void*)event.waiter);
     const auto task = event.waiter;
     ASSERT(std::get_if<BySingleEvent>(&task->suspend_reason) != nullptr, "task={} index={}", (void*)task, task->suspend_reason.index());
     task->suspend_reason.emplace<Running>();
@@ -185,15 +185,15 @@ inline auto Runner::event_notify(SingleEvent& event) -> void {
 }
 
 inline auto Runner::event_wait(MultiEvent& event) -> void {
-    TRACE("event_wait(multi) task={} event={}", current_task, &event);
+    TRACE("event_wait(multi) task={} event={}", (void*)current_task, (void*)&event);
     current_task->suspend_reason.emplace<ByMultiEvent>(&event);
     event.waiters.push_back(current_task);
 }
 
 inline auto Runner::event_notify(MultiEvent& event) -> void {
-    TRACE("event_notify(multi) task={} event={}", current_task, &event);
+    TRACE("event_notify(multi) task={} event={}", (void*)current_task, (void*)&event);
     for(const auto task : event.waiters) {
-        TRACE("  target {}", task);
+        TRACE("  target {}", (void*)task);
         ASSERT(std::get_if<ByMultiEvent>(&task->suspend_reason) != nullptr, "task={} index={}", (void*)task, task->suspend_reason.index());
         task->suspend_reason.emplace<Running>();
     }
@@ -201,7 +201,7 @@ inline auto Runner::event_notify(MultiEvent& event) -> void {
 }
 
 inline auto Runner::io_wait(const IOHandle fd, const bool read, const bool write, IOWaitResult& result) -> void {
-    TRACE("io_wait task={} fd={} read={} write={}", current_task, fd, read, write);
+    TRACE("io_wait task={} fd={} read={} write={}", (void*)current_task, fd, read, write);
     current_task->suspend_reason.emplace<ByIO>(&result, fd, read, write);
 }
 
