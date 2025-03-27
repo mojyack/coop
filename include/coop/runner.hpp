@@ -77,7 +77,7 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
     return IOWaitResult{
         .read  = bool(revents & POLLIN),
         .write = bool(revents & POLLOUT),
-        .error = bool(revents & (POLLHUP | POLLERR)),
+        .error = bool(revents & (POLLHUP | POLLERR | POLLNVAL)),
     };
 }
 } // namespace impl
