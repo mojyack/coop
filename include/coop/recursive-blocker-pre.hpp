@@ -1,4 +1,6 @@
 #pragma once
+#include <mutex>
+
 #include "blocker-pre.hpp"
 
 namespace coop {
