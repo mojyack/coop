@@ -28,7 +28,7 @@ struct [[nodiscard]] CoGenerator {
     auto await_resume() const -> decltype(auto) {
         auto& promise = handle.promise();
         if constexpr(PromiseWithRetValue<decltype(promise)>) {
-            return handle.promise().data;
+            return std::move(handle.promise().data);
         } else {
             return;
         }
