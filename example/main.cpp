@@ -205,23 +205,23 @@ auto thread_event_test() -> coop::Async<void> {
 
 auto task_cancel_test() -> coop::Async<void> {
     struct Local {
-        static auto fn1() -> coop::Async<void> {
+        static auto fn() -> coop::Async<void> {
             co_await coop::sleep(delay_secs(2));
             fail;
         }
-        static auto fn2(bool& flag) -> coop::Async<void> {
+        static auto fn(bool& flag) -> coop::Async<void> {
             co_await coop::sleep(delay_secs(1));
             flag = true;
         }
-        static auto fn3(coop::SingleEvent& event) -> coop::Async<void> {
+        static auto fn(coop::SingleEvent& event) -> coop::Async<void> {
             co_await event;
             fail;
         }
-        static auto fn4(coop::MultiEvent& event) -> coop::Async<void> {
+        static auto fn(coop::MultiEvent& event) -> coop::Async<void> {
             co_await event;
             fail;
         }
-        static auto fn5(coop::ThreadEvent& event) -> coop::Async<void> {
+        static auto fn(coop::ThreadEvent& event) -> coop::Async<void> {
             co_await event;
             fail;
         }
@@ -231,7 +231,7 @@ auto task_cancel_test() -> coop::Async<void> {
 
     // cancel
     auto task = coop::TaskHandle();
-    runner.push_task(Local::fn1(), &task);
+    runner.push_task(Local::fn(), &task);
     ensure(!task.destroyed);
     co_await coop::sleep(delay_secs(1));
     task.cancel();
@@ -239,7 +239,7 @@ auto task_cancel_test() -> coop::Async<void> {
 
     // dissociate
     auto flag = false;
-    runner.push_task(Local::fn2(flag), &task);
+    runner.push_task(Local::fn(flag), &task);
     task.dissociate();
     task.cancel();
     co_await coop::sleep(delay_secs(2));
@@ -247,19 +247,19 @@ auto task_cancel_test() -> coop::Async<void> {
 
     // cancel while waiting for single event
     auto sevent = coop::SingleEvent();
-    runner.push_task(Local::fn3(sevent), &task);
+    runner.push_task(Local::fn(sevent), &task);
     co_await coop::sleep(delay_secs(1));
     task.cancel();
 
     // cancel while waiting for multi event
     auto mevent = coop::MultiEvent();
-    runner.push_task(Local::fn4(mevent), &task);
+    runner.push_task(Local::fn(mevent), &task);
     co_await coop::sleep(delay_secs(1));
     task.cancel();
 
     // cancel while waiting for thread event
     auto tevent = coop::ThreadEvent();
-    runner.push_task(Local::fn5(tevent), &task);
+    runner.push_task(Local::fn(tevent), &task);
     co_await coop::sleep(delay_secs(1));
     task.cancel();
 
