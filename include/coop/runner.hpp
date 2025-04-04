@@ -2,11 +2,6 @@
 #include <algorithm>
 #include <cstring>
 #include <thread>
-#include <vector>
-
-#if !defined(_WIN32)
-#include <poll.h>
-#endif
 
 #include "io-pre.hpp"
 #include "multi-event-pre.hpp"
@@ -33,50 +28,6 @@ inline auto find_iterator(Task& child) -> decltype(Task::children)::iterator {
     return children.end();
 }
 
-struct CollectContext {
-    std::vector<Task*>                    result;
-    std::vector<Task*>                    poll_tasks;
-    std::vector<pollfd>                   poll_fds;
-    std::chrono::system_clock::time_point now   = std::chrono::system_clock::now();
-    std::chrono::system_clock::duration   sleep = std::chrono::system_clock::duration::max();
-};
-
-inline auto collect_resumable_tasks(Task& task, CollectContext& context) -> void {
-    if(!task.children.empty()) {
-        for(auto& child : task.children) {
-            collect_resumable_tasks(child, context);
-        }
-        return;
-    }
-
-    auto& reason = task.suspend_reason;
-    switch(reason.index()) {
-    case 0: // Running
-        context.result.push_back(&task);
-        break;
-    case 1: { // ByTimer
-        auto& timer = std::get<1>(reason);
-        if(timer.suspend_until < context.now) {
-            reason.emplace<Running>();
-            context.result.push_back(&task);
-        } else {
-            context.sleep = std::min(context.sleep, timer.suspend_until - context.now);
-        }
-    } break;
-    case 2: // BySingleEvent
-        break;
-    case 3: // ByMultiEvent
-        break;
-    case 4: { // ByIO
-        auto& io = std::get<4>(reason);
-        context.poll_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
-        context.poll_tasks.push_back(&task);
-    } break;
-    default:
-        PANIC("index={}", reason.index());
-    }
-}
-
 inline auto revents_to_io_result(const short revents) -> IOWaitResult {
     return IOWaitResult{
         .read  = bool(revents & POLLIN),
@@ -86,8 +37,51 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 }
 } // namespace impl
 
-inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
-    for(auto& task : tasks) {
+inline auto Runner::gather_resumable_tasks(Task& task, sc::time_point now, sc::duration sleep) -> sc::duration {
+    if(!task.children.empty()) {
+        for(auto& child : task.children) {
+            sleep = std::min(sleep, gather_resumable_tasks(child, now, sleep));
+        }
+        return sleep;
+    }
+
+    auto& reason = task.suspend_reason;
+    switch(reason.index()) {
+    case 0: // Running
+        running_tasks.push_back(&task);
+        break;
+    case 1: { // ByTimer
+        auto& timer = std::get<1>(reason);
+        if(timer.suspend_until < now) {
+            reason.emplace<Running>();
+            running_tasks.push_back(&task);
+        } else {
+            sleep = std::min(sleep, timer.suspend_until - now);
+        }
+    } break;
+    case 2: // BySingleEvent
+        break;
+    case 3: // ByMultiEvent
+        break;
+    case 4: { // ByIO
+        if(!running_tasks.empty()) {
+            break; // polling will be skipped
+        }
+        auto& io = std::get<4>(reason);
+        polling_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
+        polling_tasks.push_back(&task);
+    } break;
+    default:
+        PANIC("index={}", reason.index());
+    }
+    return sleep;
+}
+
+inline auto Runner::run_tasks() -> void {
+    for(const auto task : running_tasks) {
+        if(task == nullptr) {
+            continue; // destroyed
+        }
         DEBUG("resuming task={} handle={}", (void*)task, task->handle.address());
         current_task = task;
         task->handle.resume();
@@ -134,6 +128,20 @@ inline auto Runner::destroy_task(Task& task) -> bool {
 
     // cancel events
     switch(task.suspend_reason.index()) {
+    case 0:
+        if(&task == current_task) {
+            // called from run_tasks
+            break;
+        }
+        // called from cancel_task
+        // we have to prevent the target task from being resumed
+        for(auto& candidate : running_tasks) {
+            if(candidate == &task) {
+                candidate = nullptr; // remove target task from resume queue
+                break;
+            }
+        }
+        break;
     case 2: {
         auto& event  = std::get<2>(task.suspend_reason);
         auto& waiter = event.event->waiter;
@@ -232,17 +240,19 @@ loop:
     }
 
     DEBUG("loop {}", (loop_count += 1));
-    auto context = impl::CollectContext();
-    collect_resumable_tasks(root, context);
-    const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(context.sleep).count();
+    running_tasks.clear();
+    polling_tasks.clear();
+    polling_fds.clear();
+    const auto sleep_time = gather_resumable_tasks(root);
+    const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time).count();
 
-    if(!context.result.empty()) {
-        run_tasks(context.result); // resume already waked tasks
+    if(!running_tasks.empty()) {
+        run_tasks(); // resume already waked tasks
         goto loop;
     }
-    if(!context.poll_tasks.empty()) {
+    if(!polling_tasks.empty()) {
         // wait for io
-        auto& pollfds = context.poll_fds;
+        auto& pollfds = polling_fds;
         DEBUG("poll start timeout={}", timeout_ms);
         const auto poll_timeout = timeout_ms + 1; // +1 to correct rounding error
 #if defined(_WIN32)
@@ -254,26 +264,25 @@ loop:
 #endif
         DEBUG("poll done count={}", nfds);
 
-        auto ready = std::vector<Task*>();
         for(auto i = 0, c = 0; i < int(pollfds.size()) && c < nfds; i += 1) {
             if(pollfds[i].revents == 0) {
                 continue;
             }
             c += 1;
-            auto& task = *context.poll_tasks[i];
+            auto& task = *polling_tasks[i];
 
             const auto io = std::get_if<ByIO>(&task.suspend_reason);
             ASSERT(io != nullptr);
             *io->result = impl::revents_to_io_result(pollfds[i].revents);
             task.suspend_reason.emplace<Running>();
-            ready.push_back(&task);
+            running_tasks.push_back(&task);
         }
-        run_tasks(context.result);
+        run_tasks();
         goto loop;
     }
 
     DEBUG("sleeping {}", timeout_ms);
-    std::this_thread::sleep_for(context.sleep);
+    std::this_thread::sleep_for(sleep_time);
     goto loop;
 }
 } // namespace coop

@@ -4,9 +4,12 @@
 #include <list>
 #include <span>
 #include <variant>
+#include <vector>
 
 #if defined(_WIN32)
 #include <winsock2.h>
+#else
+#include <poll.h>
 #endif
 
 #include "cohandle.hpp"
@@ -59,10 +62,16 @@ struct Task {
 
 struct Runner {
     // private
-    Task  root;
-    Task* current_task = &root;
+    using sc = std::chrono::system_clock;
 
-    auto run_tasks(std::span<Task*> tasks) -> void;
+    Task                root;
+    Task*               current_task = &root;
+    std::vector<Task*>  running_tasks;
+    std::vector<Task*>  polling_tasks;
+    std::vector<pollfd> polling_fds;
+
+    auto gather_resumable_tasks(Task& task, sc::time_point now = sc::now(), sc::duration sleep = sc::duration::max()) -> sc::duration;
+    auto run_tasks() -> void;
 
     // internal
     template <CoHandleLike CoHandle>
