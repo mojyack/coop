@@ -266,6 +266,30 @@ auto task_cancel_test() -> coop::Async<void> {
     co_return;
 }
 
+auto task_join_test() -> coop::Async<void> {
+    struct Local {
+        static auto f1() -> coop::Async<void> {
+            co_await coop::sleep(delay_secs(1));
+        }
+    };
+
+    auto& runner = *(co_await coop::reveal_runner());
+    auto  task   = coop::TaskHandle();
+    {
+        auto check = TimeChecker();
+        runner.push_task(Local::f1(), &task);
+        ensure(check.test_elapsed(0));
+        task.cancel();
+    }
+    {
+        auto check = TimeChecker();
+        runner.push_task(Local::f1(), &task);
+        co_await task.join();
+        ensure(check.test_elapsed(1));
+        task.cancel();
+    }
+}
+
 auto io_test() -> coop::Async<void> {
     auto pipe   = coop::Pipe();
     auto thread = std::thread([&]() {
@@ -363,6 +387,7 @@ const auto tests = std::array{
     test(multi_event),
     test(thread_event),
     test(task_cancel),
+    test(task_join),
     test(io),
     test(run_thread),
     test(blocker),

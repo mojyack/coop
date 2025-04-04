@@ -12,21 +12,25 @@
 #include "multi-event-pre.hpp"
 #include "runner-pre.hpp"
 #include "single-event-pre.hpp"
+#include "task-handle.hpp"
 
 #include "assert-def.hpp"
 
 namespace coop {
 namespace impl {
-inline auto remove_task_child(Task& child) -> bool {
-    auto& children = child.parent->children;
+inline auto siblings(Task& task) -> std::list<Task>& {
+    return task.parent->children;
+}
+
+inline auto find_iterator(Task& child) -> decltype(Task::children)::iterator {
+    auto& children = siblings(child);
     for(auto i = children.begin(); i != children.end(); i = std::next(i)) {
         auto& current = *i;
         if(&current == &child) {
-            children.erase(i);
-            return true;
+            return i;
         }
     }
-    return false;
+    return children.end();
 }
 
 struct CollectContext {
@@ -82,18 +86,6 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 }
 } // namespace impl
 
-inline auto TaskHandle::cancel() -> bool {
-    return runner->cancel_task(*this);
-}
-
-inline auto TaskHandle::dissociate() -> void {
-    if(task == nullptr) {
-        return;
-    }
-    task->user_handle = nullptr;
-    task              = nullptr;
-}
-
 inline auto Runner::run_tasks(const std::span<Task*> tasks) -> void {
     for(auto& task : tasks) {
         DEBUG("resuming task={} handle={}", (void*)task, task->handle.address());
@@ -139,6 +131,8 @@ inline auto Runner::destroy_task(Task& task) -> bool {
         task.user_handle->task      = nullptr;
         task.user_handle->destroyed = true;
     }
+
+    // cancel events
     switch(task.suspend_reason.index()) {
     case 2: {
         auto& event  = std::get<2>(task.suspend_reason);
@@ -154,7 +148,11 @@ inline auto Runner::destroy_task(Task& task) -> bool {
         waiters.erase(iter);
     } break;
     }
-    ASSERT(impl::remove_task_child(task), "parent={} child={}", (void*)task.parent, (void*)&task);
+
+    // delete task object
+    const auto iter = impl::find_iterator(task);
+    ASSERT(iter != impl::siblings(task).end(), "parent={} child={}", (void*)task.parent, (void*)&task);
+    impl::siblings(task).erase(iter);
     return true;
 }
 
@@ -164,6 +162,25 @@ inline auto Runner::cancel_task(TaskHandle& handle) -> bool {
     }
 
     return destroy_task(*handle.task);
+}
+
+inline auto Runner::join(TaskHandle& handle) -> void {
+    TRACE("join task={} child={}", (void*)current_task, (void*)handle.task);
+    if(handle.task == nullptr) {
+        return;
+    }
+
+    auto& child = *handle.task;
+    ASSERT(child.parent == &root, "task {} tried steal child task {} from another task {}", (void*)current_task, (void*)handle.task, (void*)handle.task->parent);
+
+    // transfer task object
+    auto& new_sib = current_task->children;
+    auto& old_sib = impl::siblings(child);
+    auto  iter    = impl::find_iterator(child);
+    ASSERT(iter != old_sib.end(), "parent={} child={}", (void*)child.parent, (void*)&child);
+
+    new_sib.splice(new_sib.end(), old_sib, iter);
+    child.parent = current_task;
 }
 
 inline auto Runner::delay(const std::chrono::system_clock::duration duration) -> void {

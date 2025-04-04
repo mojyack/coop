@@ -11,6 +11,7 @@
 
 #include "cohandle.hpp"
 #include "generator-pre.hpp"
+#include "task-handle-pre.hpp"
 
 namespace coop {
 struct IOWaitResult;
@@ -47,17 +48,6 @@ struct ByIO {
 
 using SuspendReason = std::variant<Running, ByTimer, BySingleEvent, ByMultiEvent, ByIO>;
 
-struct Task;
-
-struct TaskHandle {
-    Task*   task = nullptr;
-    Runner* runner;
-    bool    destroyed;
-
-    auto cancel() -> bool;
-    auto dissociate() -> void;
-};
-
 struct Task {
     std::coroutine_handle<> handle;
     Task*                   parent;
@@ -80,6 +70,7 @@ struct Runner {
     auto destroy_task(Task& task) -> bool;
 
     // for awaiters
+    auto join(TaskHandle& handle) -> void;
     auto delay(std::chrono::system_clock::duration duration) -> void;
     auto event_wait(SingleEvent& event) -> void;
     auto event_notify(SingleEvent& event) -> void;

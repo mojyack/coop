@@ -3,6 +3,7 @@
 - promise       coroutine promise
 - generator     return value of async functions, which generates promise
 - runner        task scheduler
+- task-handle   structure for user to control spawned tasks
 
 # awaitable objects
 - multi-event   multiple-waiters event
