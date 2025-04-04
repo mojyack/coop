@@ -266,6 +266,29 @@ auto task_cancel_test() -> coop::Async<void> {
     co_return;
 }
 
+auto task_cancel_running_test() -> coop::Async<void> {
+    struct Local {
+        static auto fn(coop::MultiEvent& event, coop::TaskHandle& handle) -> coop::Async<void> {
+            co_await event;
+            handle.cancel();
+        }
+    };
+
+    auto& runner = *(co_await coop::reveal_runner());
+
+    // cancel running task
+    auto event = coop::MultiEvent();
+    auto task1 = coop::TaskHandle();
+    auto task2 = coop::TaskHandle();
+    // task1,2 wake at the same time and cancel each other
+    runner.push_task(Local::fn(event, task1), &task2);
+    runner.push_task(Local::fn(event, task2), &task1);
+    co_await coop::sleep(delay_secs(1));
+    event.notify();
+
+    co_return;
+}
+
 auto task_join_test() -> coop::Async<void> {
     struct Local {
         static auto f1() -> coop::Async<void> {
@@ -387,6 +410,7 @@ const auto tests = std::array{
     test(multi_event),
     test(thread_event),
     test(task_cancel),
+    test(task_cancel_running),
     test(task_join),
     test(io),
     test(run_thread),
