@@ -37,7 +37,7 @@
         std::terminate();                                                              \
     }
 
-#define ASSERT(cond, ...)                                          \
-    if(!(cond)) {                                                  \
-        PANIC("assertion failed" __VA_OPT__(, " ", ) __VA_ARGS__); \
+#define ASSERT(cond, ...)                                      \
+    if(!(cond)) {                                              \
+        PANIC("assertion failed" __VA_OPT__(" ") __VA_ARGS__); \
     }
