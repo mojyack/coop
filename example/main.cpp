@@ -266,6 +266,31 @@ auto task_cancel_test() -> coop::Async<void> {
     co_return;
 }
 
+auto nested_task_cancel_test() -> coop::Async<void> {
+    struct Local {
+        static auto base(coop::MultiEvent& event) -> coop::Async<void> {
+            co_await event;
+            fail;
+        }
+        static auto branch(coop::MultiEvent& event) -> coop::Async<void> {
+            co_await coop::run_args(base(event), base(event), base(event));
+        }
+        static auto branch2(coop::MultiEvent& event) -> coop::Async<void> {
+            co_await coop::run_args(branch(event), branch(event), branch(event));
+        }
+    };
+
+    auto& runner = *(co_await coop::reveal_runner());
+
+    // cancel
+    auto task  = coop::TaskHandle();
+    auto event = coop::MultiEvent();
+    runner.push_task(Local::branch2(event), &task);
+    co_await coop::sleep(delay_secs(1));
+    task.cancel();
+    event.notify();
+}
+
 auto task_cancel_running_test() -> coop::Async<void> {
     struct Local {
         static auto fn(coop::MultiEvent& event, coop::TaskHandle& handle) -> coop::Async<void> {
@@ -407,13 +432,15 @@ auto await_from_normal_func_test() -> coop::Async<void> {
             co_return count * 2;
         }
         static auto fn(coop::Runner& runner) -> int {
-            return runner.await(calc(1));
+            const auto ret = runner.await(calc(1));
+            return ret ? *ret : -1;
         }
         static auto call_fn(coop::Runner& runner) -> coop::Async<int> {
             co_return fn(runner);
         }
         static auto call_call_fn(coop::Runner& runner) -> int {
-            return runner.await(call_fn(runner));
+            const auto ret = runner.await(call_fn(runner));
+            return ret ? *ret : -1;
         }
     };
 
@@ -432,6 +459,41 @@ auto await_from_normal_func_test() -> coop::Async<void> {
     }
 }
 
+auto await_cancel_test() -> coop::Async<void> {
+    struct Local {
+        static auto ret(int time) -> coop::Async<int> {
+            co_await coop::sleep(delay_secs(time));
+            co_return time;
+        }
+        static auto base() -> coop::Async<void> {
+            co_await coop::sleep(delay_secs(2));
+        }
+        static auto fn(coop::Runner& runner, int depth) -> void {
+            runner.await(depth == 0 ? base() : co(runner, depth - 1));
+        }
+        static auto co(coop::Runner& runner, int depth) -> coop::Async<void> {
+            fn(runner, depth);
+            co_return;
+        }
+    };
+
+    auto& runner = *co_await coop::reveal_runner();
+
+    {
+        auto checker = TimeChecker();
+        co_await Local::co(runner, 5);
+        ensure(checker.test_elapsed(2));
+    }
+    {
+        auto checker = TimeChecker();
+        auto task    = coop::TaskHandle();
+        runner.push_task(Local::co(runner, 5), &task);
+        co_await coop::sleep(delay_secs(1));
+        task.cancel();
+        ensure(checker.test_elapsed(1));
+    }
+}
+
 #define test(name) \
     std::pair { #name, &name##_test }
 const auto tests = std::array{
@@ -443,12 +505,14 @@ const auto tests = std::array{
     test(thread_event),
     test(task_cancel),
     test(task_cancel_running),
+    test(nested_task_cancel),
     test(task_join),
     test(io),
     test(run_thread),
     test(blocker),
     test(task_injector),
     test(await_from_normal_func),
+    test(await_cancel),
 };
 
 auto main(const int argc, const char* const* argv) -> int {

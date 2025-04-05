@@ -5,6 +5,7 @@
 
 #include "io-pre.hpp"
 #include "multi-event-pre.hpp"
+#include "promise-pre.hpp"
 #include "runner-pre.hpp"
 #include "single-event-pre.hpp"
 #include "task-handle.hpp"
@@ -36,6 +37,14 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
     };
 }
 } // namespace impl
+
+inline auto Runner::dump_task_tree(const Task& task, int depth) -> void {
+    const auto indent = std::string(depth, ' ');
+    std::println("{}- task={} parent={} suspend={} obj={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.objective_of);
+    for(const auto& child : task.children) {
+        dump_task_tree(child, depth + 2);
+    }
+}
 
 inline auto Runner::gather_resumable_tasks(Task& task, GatheringResult& result) -> void {
     if(!task.children.empty()) {
@@ -88,7 +97,7 @@ inline auto Runner::run_tasks() -> void {
         task.handle.resume();
         DEBUG("task done");
         if(task.handle.done()) {
-            destroy_task(task);
+            remove_task(task);
         }
         if(orig_loop_count != loop_count) {
             // run() called inside the handle.resume()
@@ -120,7 +129,8 @@ inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHand
         *user_handle = TaskHandle{.task = &task, .runner = this, .destroyed = false};
     }
 
-    DEBUG("new task pushed task={} handle={}", (void*)&task, task.handle.address());
+    DEBUG("new task pushed task={} handle={} current={}", (void*)&task, task.handle.address(), (void*)current_task);
+    // dump_task_tree(root);
 }
 
 template <CoGeneratorLike Generator>
@@ -131,12 +141,29 @@ auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> vo
 template <CoGeneratorLike Generator>
 auto Runner::await(Generator generator) -> decltype(auto) {
     push_task(false, generator.handle, nullptr, objective_task_finished.size());
+    current_task->awaiting = true;
     std::thread(&Runner::run, this).join();
-    return generator.await_resume();
+    current_task->awaiting = false;
+    if constexpr(PromiseWithRetValue<decltype(Generator::handle.promise())>) {
+        using Opt = std::optional<std::remove_reference_t<decltype(generator.await_resume())>>;
+        return current_task->await_cancelled ? Opt() : Opt(generator.await_resume());
+    } else {
+        return !current_task->await_cancelled;
+    }
 }
 
-inline auto Runner::destroy_task(Task& task) -> bool {
+inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
+    auto& task = *iter;
     TRACE("destroy task={} handle={}", (void*)&task, task.handle.address());
+    // destroy recursively
+    for(auto c = task.children.begin(); c != task.children.end();) {
+        c = destroy_task(c) ? task.children.erase(c) : std::next(c);
+    }
+    if(task.awaiting) {
+        // cannot destroy awaiting task
+        task.await_cancelled = true;
+        return false;
+    }
     if(task.handle_owned) {
         task.handle.destroy();
     }
@@ -176,11 +203,16 @@ inline auto Runner::destroy_task(Task& task) -> bool {
         waiters.erase(iter);
     } break;
     }
+    return true;
+}
 
-    // delete task object
+inline auto Runner::remove_task(Task& task) -> bool {
     const auto iter = impl::find_iterator(task);
     ASSERT(iter != impl::siblings(task).end(), "parent={} child={}", (void*)task.parent, (void*)&task);
-    impl::siblings(task).erase(iter);
+    if(destroy_task(iter)) {
+        impl::siblings(task).erase(iter);
+    }
+    // dump_task_tree(root);
     return true;
 }
 
@@ -189,7 +221,7 @@ inline auto Runner::cancel_task(TaskHandle& handle) -> bool {
         return true;
     }
 
-    return destroy_task(*handle.task);
+    return remove_task(*handle.task);
 }
 
 inline auto Runner::join(TaskHandle& handle) -> void {
@@ -258,6 +290,7 @@ inline auto Runner::run() -> void {
 
 loop:
     if(objective_task_finished.size() == 1 ? /*root loop*/ root.children.empty() : /*derived loop*/ objective_task_finished.back()) {
+        DEBUG("mainloop finished depth={}", objective_task_finished.size());
         current_task = orig_current_task;
         objective_task_finished.pop_back();
         return;
@@ -266,6 +299,7 @@ loop:
     loop_count += 1;
     DEBUG("loop {}", loop_count);
     auto result = GatheringResult();
+    // dump_task_tree(root);
     gather_resumable_tasks(root, result);
     const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(result.sleep).count();
 

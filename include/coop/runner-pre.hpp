@@ -59,7 +59,9 @@ struct Task {
     std::list<Task>         children;
     size_t                  objective_of = 0;
     SuspendReason           suspend_reason;
-    bool                    handle_owned = true;
+    bool                    handle_owned    = true;
+    bool                    awaiting        = false;
+    bool                    await_cancelled = false;
 };
 
 struct Runner {
@@ -79,13 +81,15 @@ struct Runner {
     std::vector<bool>  objective_task_finished;
 
     // private
+    auto dump_task_tree(const Task& task, int depth = 0) -> void;
     auto gather_resumable_tasks(Task& task, GatheringResult& result) -> void;
     auto run_tasks() -> void;
 
     // coop internal
     template <CoHandleLike CoHandle>
     auto push_task(bool independent, CoHandle& handle, TaskHandle* user_handle, size_t objective_of) -> void;
-    auto destroy_task(Task& task) -> bool;
+    auto destroy_task(std::list<Task>::iterator iter) -> bool;
+    auto remove_task(Task& task) -> bool;
 
     // for awaiters
     auto join(TaskHandle& handle) -> void;
