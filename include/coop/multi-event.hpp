@@ -10,6 +10,8 @@ inline auto MultiEvent::await_suspend(CoHandle caller_task) -> void {
 }
 
 inline auto MultiEvent::notify() -> void {
-    runner->event_notify(*this);
+    if(runner != nullptr) {
+        runner->event_notify(*this);
+    }
 }
 } // namespace coop
