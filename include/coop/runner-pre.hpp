@@ -3,6 +3,7 @@
 #include <coroutine>
 #include <list>
 #include <span>
+#include <thread>
 #include <variant>
 #include <vector>
 
@@ -56,6 +57,7 @@ struct Task {
     Task*                   parent;
     TaskHandle*             user_handle = nullptr;
     std::list<Task>         children;
+    size_t                  objective_of = 0;
     SuspendReason           suspend_reason;
     bool                    handle_owned = true;
 };
@@ -63,19 +65,26 @@ struct Task {
 struct Runner {
     // private
     using sc = std::chrono::system_clock;
+    struct GatheringResult {
+        std::vector<Task*>  polling_tasks;
+        std::vector<pollfd> polling_fds;
+        sc::time_point      now   = sc::now();
+        sc::duration        sleep = sc::duration::max();
+    };
 
-    Task                root;
-    Task*               current_task = &root;
-    std::vector<Task*>  running_tasks;
-    std::vector<Task*>  polling_tasks;
-    std::vector<pollfd> polling_fds;
+    Task               root;
+    Task*              current_task = &root;
+    size_t             loop_count   = 0;
+    std::vector<Task*> running_tasks;
+    std::vector<bool>  objective_task_finished;
 
-    auto gather_resumable_tasks(Task& task, sc::time_point now = sc::now(), sc::duration sleep = sc::duration::max()) -> sc::duration;
+    // private
+    auto gather_resumable_tasks(Task& task, GatheringResult& result) -> void;
     auto run_tasks() -> void;
 
-    // internal
+    // coop internal
     template <CoHandleLike CoHandle>
-    auto push_task(bool independent, CoHandle& handle, TaskHandle* user_handle) -> void;
+    auto push_task(bool independent, CoHandle& handle, TaskHandle* user_handle, size_t objective_of) -> void;
     auto destroy_task(Task& task) -> bool;
 
     // for awaiters
@@ -90,6 +99,8 @@ struct Runner {
     // public
     template <CoGeneratorLike Generator>
     auto push_task(Generator generator, TaskHandle* user_handle = nullptr) -> void;
+    template <CoGeneratorLike Generator>
+    auto await(Generator generator) -> decltype(auto);
     auto cancel_task(TaskHandle& handle) -> bool;
     auto run() -> void;
 };

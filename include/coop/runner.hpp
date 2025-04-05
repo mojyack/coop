@@ -37,12 +37,12 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 }
 } // namespace impl
 
-inline auto Runner::gather_resumable_tasks(Task& task, sc::time_point now, sc::duration sleep) -> sc::duration {
+inline auto Runner::gather_resumable_tasks(Task& task, GatheringResult& result) -> void {
     if(!task.children.empty()) {
         for(auto& child : task.children) {
-            sleep = std::min(sleep, gather_resumable_tasks(child, now, sleep));
+            gather_resumable_tasks(child, result);
         }
-        return sleep;
+        return;
     }
 
     auto& reason = task.suspend_reason;
@@ -52,11 +52,11 @@ inline auto Runner::gather_resumable_tasks(Task& task, sc::time_point now, sc::d
         break;
     case 1: { // ByTimer
         auto& timer = std::get<1>(reason);
-        if(timer.suspend_until < now) {
+        if(timer.suspend_until < result.now) {
             reason.emplace<Running>();
             running_tasks.push_back(&task);
         } else {
-            sleep = std::min(sleep, timer.suspend_until - now);
+            result.sleep = std::min(result.sleep, timer.suspend_until - result.now);
         }
     } break;
     case 2: // BySingleEvent
@@ -68,32 +68,41 @@ inline auto Runner::gather_resumable_tasks(Task& task, sc::time_point now, sc::d
             break; // polling will be skipped
         }
         auto& io = std::get<4>(reason);
-        polling_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
-        polling_tasks.push_back(&task);
+        result.polling_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
+        result.polling_tasks.push_back(&task);
     } break;
     default:
         PANIC("index={}", reason.index());
     }
-    return sleep;
 }
 
 inline auto Runner::run_tasks() -> void {
-    for(const auto task : running_tasks) {
-        if(task == nullptr) {
+    const auto orig_loop_count = loop_count;
+    for(auto& ptr : running_tasks) {
+        if(ptr == nullptr) {
             continue; // destroyed
         }
-        DEBUG("resuming task={} handle={}", (void*)task, task->handle.address());
-        current_task = task;
-        task->handle.resume();
+        auto& task = *std::exchange(ptr, nullptr);
+        DEBUG("resuming task={} handle={}", (void*)&task, task.handle.address());
+        current_task = &task;
+        task.handle.resume();
         DEBUG("task done");
-        if(task->handle.done()) {
-            destroy_task(*task);
+        if(task.handle.done()) {
+            destroy_task(task);
+        }
+        if(orig_loop_count != loop_count) {
+            // run() called inside the handle.resume()
+            // this loop is obsolete
+            TRACE("interrupted by another loop, discarding current resume queue");
+            current_task = &task;
+            break;
         }
     }
+    running_tasks.clear();
 }
 
 template <CoHandleLike CoHandle>
-inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHandle* const user_handle) -> void {
+inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHandle* const user_handle, size_t objective_of) -> void {
     handle.promise().runner = this;
 
     auto& parent = independent ? root : *current_task;
@@ -103,17 +112,27 @@ inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHand
         .handle       = independent ? std::exchange(handle, nullptr) : handle,
         .parent       = &parent,
         .user_handle  = user_handle,
+        .objective_of = objective_of,
         .handle_owned = independent,
     });
 
     if(user_handle != nullptr) {
         *user_handle = TaskHandle{.task = &task, .runner = this, .destroyed = false};
     }
+
+    DEBUG("new task pushed task={} handle={}", (void*)&task, task.handle.address());
 }
 
 template <CoGeneratorLike Generator>
 auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> void {
-    push_task(true, generator.handle, user_handle);
+    push_task(true, generator.handle, user_handle, 0);
+}
+
+template <CoGeneratorLike Generator>
+auto Runner::await(Generator generator) -> decltype(auto) {
+    push_task(false, generator.handle, nullptr, objective_task_finished.size());
+    std::thread(&Runner::run, this).join();
+    return generator.await_resume();
 }
 
 inline auto Runner::destroy_task(Task& task) -> bool {
@@ -125,6 +144,7 @@ inline auto Runner::destroy_task(Task& task) -> bool {
         task.user_handle->task      = nullptr;
         task.user_handle->destroyed = true;
     }
+    objective_task_finished[task.objective_of] = true;
 
     // cancel events
     switch(task.suspend_reason.index()) {
@@ -232,27 +252,30 @@ inline auto Runner::io_wait(const IOHandle fd, const bool read, const bool write
 }
 
 inline auto Runner::run() -> void {
-    [[maybe_unused]] auto loop_count = size_t(0);
+    const auto orig_current_task = current_task;
+    objective_task_finished.push_back(false);
+    DEBUG("starting mainloop depth={}", objective_task_finished.size());
+
 loop:
-    if(root.children.empty()) {
-        current_task = &root;
+    if(objective_task_finished.size() == 1 ? /*root loop*/ root.children.empty() : /*derived loop*/ objective_task_finished.back()) {
+        current_task = orig_current_task;
+        objective_task_finished.pop_back();
         return;
     }
 
-    DEBUG("loop {}", (loop_count += 1));
-    running_tasks.clear();
-    polling_tasks.clear();
-    polling_fds.clear();
-    const auto sleep_time = gather_resumable_tasks(root);
-    const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(sleep_time).count();
+    loop_count += 1;
+    DEBUG("loop {}", loop_count);
+    auto result = GatheringResult();
+    gather_resumable_tasks(root, result);
+    const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(result.sleep).count();
 
     if(!running_tasks.empty()) {
         run_tasks(); // resume already waked tasks
         goto loop;
     }
-    if(!polling_tasks.empty()) {
+    if(!result.polling_tasks.empty()) {
         // wait for io
-        auto& pollfds = polling_fds;
+        auto& pollfds = result.polling_fds;
         DEBUG("poll start timeout={}", timeout_ms);
         const auto poll_timeout = timeout_ms + 1; // +1 to correct rounding error
 #if defined(_WIN32)
@@ -269,7 +292,7 @@ loop:
                 continue;
             }
             c += 1;
-            auto& task = *polling_tasks[i];
+            auto& task = *result.polling_tasks[i];
 
             const auto io = std::get_if<ByIO>(&task.suspend_reason);
             ASSERT(io != nullptr);
@@ -282,7 +305,7 @@ loop:
     }
 
     DEBUG("sleeping {}", timeout_ms);
-    std::this_thread::sleep_for(sleep_time);
+    std::this_thread::sleep_for(result.sleep);
     goto loop;
 }
 } // namespace coop

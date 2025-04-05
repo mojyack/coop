@@ -400,6 +400,38 @@ auto task_injector_test() -> coop::Async<void> {
     co_return;
 }
 
+auto await_from_normal_func_test() -> coop::Async<void> {
+    struct Local {
+        static auto calc(int count) -> coop::Async<int> {
+            co_await coop::sleep(delay_secs(1));
+            co_return count * 2;
+        }
+        static auto fn(coop::Runner& runner) -> int {
+            return runner.await(calc(1));
+        }
+        static auto call_fn(coop::Runner& runner) -> coop::Async<int> {
+            co_return fn(runner);
+        }
+        static auto call_call_fn(coop::Runner& runner) -> int {
+            return runner.await(call_fn(runner));
+        }
+    };
+
+    auto& runner = *co_await coop::reveal_runner();
+    {
+        // call coroutine calc() from normal function fn()
+        auto checker = TimeChecker();
+        ensure(Local::fn(runner) == 2);
+        ensure(checker.test_elapsed(1));
+    }
+    {
+        // nested
+        auto checker = TimeChecker();
+        ensure(Local::call_call_fn(runner) == 2);
+        ensure(checker.test_elapsed(1));
+    }
+}
+
 #define test(name) \
     std::pair { #name, &name##_test }
 const auto tests = std::array{
@@ -416,6 +448,7 @@ const auto tests = std::array{
     test(run_thread),
     test(blocker),
     test(task_injector),
+    test(await_from_normal_func),
 };
 
 auto main(const int argc, const char* const* argv) -> int {
