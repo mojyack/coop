@@ -14,6 +14,7 @@
 #include <coop/recursive-blocker.hpp>
 #include <coop/runner.hpp>
 #include <coop/single-event.hpp>
+#include <coop/task-handle.hpp>
 #include <coop/task-injector.hpp>
 #include <coop/thread.hpp>
 #include <coop/timer.hpp>
