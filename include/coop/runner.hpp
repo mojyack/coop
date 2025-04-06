@@ -1,7 +1,6 @@
 #pragma once
 #include <algorithm>
 #include <cstring>
-#include <thread>
 
 #include "io-pre.hpp"
 #include "multi-event-pre.hpp"
@@ -142,7 +141,7 @@ template <CoGeneratorLike Generator>
 auto Runner::await(Generator generator) -> decltype(auto) {
     push_task(false, generator.handle, nullptr, objective_task_finished.size());
     current_task->awaiting = true;
-    std::thread(&Runner::run, this).join();
+    run();
     current_task->awaiting = false;
     if constexpr(PromiseWithRetValue<decltype(Generator::handle.promise())>) {
         using Opt = std::optional<std::remove_reference_t<decltype(generator.await_resume())>>;
