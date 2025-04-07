@@ -26,12 +26,20 @@ auto format_filename(const std::string_view filename) -> std::string_view {
     return coop::format_filename(filename);
 }
 
-auto speed_rate = 1.0;
-auto errors     = 0uz;
+auto speed_rate    = 1.0;
+auto errors        = 0uz;
+auto ignore_errors = false;
 
-#define fail                                                  \
-    std::println(stderr, "test failed at line {}", __LINE__); \
-    errors += 1;
+auto fail(const int line) -> void {
+    if(ignore_errors) {
+        std::println("(ignoring assertion failure at line {})", line);
+    } else {
+        std::println(stderr, "test failed at line {}", line);
+        errors += 1;
+    }
+}
+
+#define fail fail(__LINE__)
 
 #define ensure(cond) \
     if(!(cond)) {    \
@@ -196,8 +204,10 @@ auto thread_event_test() -> coop::Async<void> {
             std::this_thread::sleep_for(delay_secs(1));
         }
     });
-    for(auto i = 0; i < 3; i += 1) {
-        co_await event;
+    for(auto i = 0; i < 3;) {
+        const auto notified = co_await event;
+        ensure(notified == 1);
+        i += notified;
         count += 1;
     }
     thread.join();
@@ -396,7 +406,7 @@ auto blocker_test() -> coop::Async<void> {
 
     auto check = TimeChecker();
     co_await coop::sleep(delay_secs(1));
-    check.test_elapsed(3);
+    ensure(check.test_elapsed(3));
 
     blocker.stop();
     thread.join();
@@ -452,6 +462,7 @@ auto await_from_normal_func_test() -> coop::Async<void> {
         ensure(Local::fn(runner) == 2);
         ensure(checker.test_elapsed(1));
     }
+    co_await coop::yield(); // give other tasks chance to release nested loop
     {
         // nested
         auto checker = TimeChecker();
@@ -485,6 +496,7 @@ auto await_cancel_test() -> coop::Async<void> {
         co_await Local::co(runner, 5);
         ensure(checker.test_elapsed(2));
     }
+    co_await coop::yield();
     {
         auto checker = TimeChecker();
         auto task    = coop::TaskHandle();
@@ -582,12 +594,14 @@ auto main(const int argc, const char* const* argv) -> int {
         runner.run();
     }
 
-    // does not work since some tests do blocking operation such as thread.join()
-    // std::println("running all tests at once");
-    // for(const auto [name, func] : tests) {
-    //     runner.push_task(func());
-    // }
-    // runner.run();
+    std::println("running all tests at once");
+    // some assertion fails because of the scheduler implementation
+    // run this test anyway for crash check
+    ignore_errors = true;
+    for(const auto [name, func] : tests) {
+        runner.push_task(func());
+    }
+    runner.run();
 
     if(errors == 0) {
         std::println("pass");
