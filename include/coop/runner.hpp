@@ -39,7 +39,7 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 
 inline auto Runner::dump_task_tree(const Task& task, int depth) -> void {
     const auto indent = std::string(depth, ' ');
-    std::println("{}- task={} parent={} suspend={} obj={} zombie={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.objective_of, task.zombie);
+    std::println("{}- task={} parent={} suspend={} awaiting={} obj={} zombie={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.awaiting, task.objective_of, task.zombie);
     for(const auto& child : task.children) {
         dump_task_tree(child, depth + 2);
     }
@@ -94,7 +94,7 @@ inline auto Runner::run_tasks() -> void {
         DEBUG("resuming task={} handle={}", (void*)&task, task.handle.address());
         current_task = &task;
         task.handle.resume();
-        DEBUG("task done");
+        DEBUG("task done task={} done={} zombie={}", (void*)&task, task.handle.done(), task.zombie);
         if(task.handle.done() || task.zombie) {
             remove_task(task);
         }
