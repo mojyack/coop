@@ -205,8 +205,10 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
         task.user_handle->destroyed = true;
     }
     if(task.handle_owned) {
-        // destroy() might call Runner::await().
-        // mark as awaiting to prevent running this task
+        // destroy() might call Runner::await() in destructor
+        // but this marks as awaiting only the caller task of this function,
+        // as current_task is not updated.
+        // mark this task as awaiting to prevent scheduler to pick this up.
         task.suspend_reason.emplace<ByAwaiting>();
         task.handle.destroy();
     }
