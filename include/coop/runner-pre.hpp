@@ -59,9 +59,9 @@ struct Task {
     std::list<Task>         children;
     size_t                  objective_of = 0;
     SuspendReason           suspend_reason;
-    bool                    handle_owned    = true;
-    bool                    awaiting        = false;
-    bool                    await_cancelled = false;
+    bool                    handle_owned = true;
+    bool                    awaiting     = false;
+    bool                    zombie       = false;
 };
 
 struct Runner {

@@ -39,7 +39,7 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 
 inline auto Runner::dump_task_tree(const Task& task, int depth) -> void {
     const auto indent = std::string(depth, ' ');
-    std::println("{}- task={} parent={} suspend={} obj={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.objective_of);
+    std::println("{}- task={} parent={} suspend={} obj={} zombie={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.objective_of, task.zombie);
     for(const auto& child : task.children) {
         dump_task_tree(child, depth + 2);
     }
@@ -95,7 +95,7 @@ inline auto Runner::run_tasks() -> void {
         current_task = &task;
         task.handle.resume();
         DEBUG("task done");
-        if(task.handle.done()) {
+        if(task.handle.done() || task.zombie) {
             remove_task(task);
         }
         if(orig_loop_count != loop_count) {
@@ -145,9 +145,9 @@ auto Runner::await(Generator generator) -> decltype(auto) {
     current_task->awaiting = false;
     if constexpr(PromiseWithRetValue<decltype(Generator::handle.promise())>) {
         using Opt = std::optional<std::remove_reference_t<decltype(generator.await_resume())>>;
-        return current_task->await_cancelled ? Opt() : Opt(generator.await_resume());
+        return current_task->zombie ? Opt() : Opt(generator.await_resume());
     } else {
-        return !current_task->await_cancelled;
+        return !current_task->zombie;
     }
 }
 
@@ -158,11 +158,14 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
     for(auto c = task.children.begin(); c != task.children.end();) {
         c = destroy_task(c) ? task.children.erase(c) : std::next(c);
     }
-    if(task.awaiting) {
-        // cannot destroy awaiting task
-        task.await_cancelled = true;
+    objective_task_finished[task.objective_of] = true;
+    if(task.awaiting || !task.children.empty()) {
+        // cannot destroy it for now
+        task.zombie = true;
+        TRACE("zombified task={}", (void*)&task);
         return false;
     }
+    TRACE("performing destroy task={}", (void*)&task);
     if(task.handle_owned) {
         task.handle.destroy();
     }
@@ -170,7 +173,6 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
         task.user_handle->task      = nullptr;
         task.user_handle->destroyed = true;
     }
-    objective_task_finished[task.objective_of] = true;
 
     // cancel events
     switch(task.suspend_reason.index()) {
@@ -216,6 +218,7 @@ inline auto Runner::remove_task(Task& task) -> bool {
 }
 
 inline auto Runner::cancel_task(TaskHandle& handle) -> bool {
+    TRACE("cancel caller={} target={}", (void*)current_task, (void*)handle.task);
     if(handle.task == nullptr || handle.destroyed) {
         return true;
     }
@@ -297,8 +300,14 @@ loop:
 
     loop_count += 1;
     DEBUG("loop {}", loop_count);
-    auto result = GatheringResult();
     // dump_task_tree(root);
+
+    if(!running_tasks.empty()) {
+        run_tasks(); // resume previously gathered tasks inherited from parent loop
+        goto loop;
+    }
+
+    auto result = GatheringResult();
     gather_resumable_tasks(root, result);
     const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(result.sleep).count();
 
@@ -306,6 +315,7 @@ loop:
         run_tasks(); // resume already waked tasks
         goto loop;
     }
+
     if(!result.polling_tasks.empty()) {
         // wait for io
         auto& pollfds = result.polling_fds;
