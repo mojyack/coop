@@ -52,6 +52,9 @@ inline auto Runner::gather_resumable_tasks(Task& task, GatheringResult& result) 
         }
         return;
     }
+    if(task.awaiting) {
+        return;
+    }
 
     auto& reason = task.suspend_reason;
     switch(reason.index()) {
