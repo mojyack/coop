@@ -45,7 +45,7 @@ struct TimeChecker {
         constexpr auto tolerance = std::chrono::milliseconds(10);
 
         const auto expected = std::chrono::milliseconds(int(expected_secs * 1000 / speed_rate));
-        const auto elapsed  = std::chrono::system_clock::now() - begin;
+        const auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - begin);
         if(expected > tolerance && elapsed < expected - tolerance) {
             std::println(stderr, "time check failed {} < {}", elapsed, expected);
             return false;
