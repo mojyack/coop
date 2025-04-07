@@ -169,13 +169,6 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
         return false;
     }
     TRACE("performing destroy task={}", (void*)&task);
-    if(task.handle_owned) {
-        task.handle.destroy();
-    }
-    if(task.user_handle != nullptr) {
-        task.user_handle->task      = nullptr;
-        task.user_handle->destroyed = true;
-    }
 
     // cancel events
     switch(task.suspend_reason.index()) {
@@ -207,6 +200,15 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
         waiters.erase(iter);
     } break;
     }
+
+    if(task.user_handle != nullptr) {
+        task.user_handle->task      = nullptr;
+        task.user_handle->destroyed = true;
+    }
+    if(task.handle_owned) {
+        task.handle.destroy();
+    }
+
     return true;
 }
 
