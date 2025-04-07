@@ -471,6 +471,46 @@ auto await_from_normal_func_test() -> coop::Async<void> {
     }
 }
 
+auto await_in_cancel_test() -> coop::Async<void> {
+    struct Worker {
+        coop::Runner* runner;
+        int*          count;
+        bool          destructing = false;
+
+        auto fn() -> coop::Async<void> {
+            co_await coop::sleep(delay_secs(1));
+            *count = 1;
+        }
+
+        ~Worker() {
+            destructing = true;
+            runner->await(fn());
+        }
+    };
+
+    struct Local {
+        static auto fn(coop::Runner& runner, int& count) -> coop::Async<void> {
+            auto worker   = Worker();
+            worker.runner = &runner;
+            worker.count  = &count;
+        loop:
+            ensure(!worker.destructing);
+            co_await coop::sleep(delay_secs(1));
+            goto loop;
+        }
+    };
+
+    auto  count  = 0;
+    auto& runner = *(co_await coop::reveal_runner());
+    auto  task   = coop::TaskHandle();
+    runner.push_task(Local::fn(runner, count), &task);
+    co_await coop::sleep(delay_secs(1));
+    auto checker = TimeChecker();
+    task.cancel();
+    ensure(count == 1);
+    ensure(checker.test_elapsed(1));
+}
+
 auto await_cancel_test() -> coop::Async<void> {
     struct Local {
         static auto ret(int time) -> coop::Async<int> {
@@ -576,6 +616,7 @@ const auto tests = std::array{
     test(blocker),
     test(task_injector),
     test(await_from_normal_func),
+    test(await_in_cancel),
     test(await_cancel),
     test(await_complex_cancel),
 };
