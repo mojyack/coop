@@ -127,4 +127,19 @@ struct RunnerGetter {
 };
 
 using reveal_runner = RunnerGetter;
+
+struct NopAwaiter {
+    auto await_ready() const -> bool {
+        return false;
+    }
+
+    template <CoHandleLike CoHandle>
+    auto await_suspend(CoHandle) -> void {
+    }
+
+    auto await_resume() const -> void {
+    }
+};
+
+using yield = NopAwaiter;
 } // namespace coop
