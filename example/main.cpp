@@ -495,6 +495,57 @@ auto await_cancel_test() -> coop::Async<void> {
     }
 }
 
+auto await_complex_cancel_test() -> coop::Async<void> {
+    struct Local {
+        static auto task4() -> coop::Async<void> {
+            co_await coop::sleep(delay_secs(3));
+        }
+        static auto task3() -> coop::Async<void> {
+            (co_await coop::reveal_runner())->await(task4());
+        }
+        static auto task2() -> coop::Async<void> {
+            co_await coop::run_args(task3(), task3(), task3());
+        }
+        static auto task1() -> coop::Async<void> {
+            (co_await coop::reveal_runner())->await(task2());
+        }
+    };
+    /*
+    # call stack
+    main()
+    run(depth=1) # on main
+    resume(task1)
+      await(task3)
+      run(depth=2) # on task1
+      resume(task3)
+        await(task4)
+        run(depth=3) # on task3
+        resume(task4)
+          co_await (sleep,io,event,...)
+        resume(taskN)
+          cancel(task1) # what
+
+    # task tree
+    root
+      task1(awaiting)
+        task2(waiting task3)
+          task3(awaiting)
+            task4(awaiter)
+      taskN
+     */
+
+    auto& runner = *co_await coop::reveal_runner();
+
+    {
+        auto checker = TimeChecker();
+        auto task    = coop::TaskHandle();
+        runner.push_task(Local::task1(), &task);
+        co_await coop::sleep(delay_secs(1));
+        task.cancel();
+        ensure(checker.test_elapsed(1));
+    }
+}
+
 #define test(name) \
     std::pair { #name, &name##_test }
 const auto tests = std::array{
@@ -514,6 +565,7 @@ const auto tests = std::array{
     test(task_injector),
     test(await_from_normal_func),
     test(await_cancel),
+    test(await_complex_cancel),
 };
 
 auto main(const int argc, const char* const* argv) -> int {
