@@ -50,7 +50,17 @@ struct ByIO {
     bool          write;
 };
 
-using SuspendReason = std::variant<Running, ByTimer, BySingleEvent, ByMultiEvent, ByIO>;
+struct ByAwaiting {
+};
+
+using SuspendReason = std::variant<Running, ByTimer, BySingleEvent, ByMultiEvent, ByIO, ByAwaiting>;
+
+constexpr auto running_index         = 0;
+constexpr auto by_timer_index        = 1;
+constexpr auto by_single_event_index = 2;
+constexpr auto by_multi_event_index  = 3;
+constexpr auto by_io_index           = 4;
+constexpr auto by_awaiting_index     = 5;
 
 struct Task {
     std::coroutine_handle<> handle;
@@ -60,7 +70,6 @@ struct Task {
     size_t                  objective_of = 0;
     SuspendReason           suspend_reason;
     bool                    handle_owned = true;
-    bool                    awaiting     = false;
     bool                    zombie       = false;
 };
 

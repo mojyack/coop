@@ -39,7 +39,7 @@ inline auto revents_to_io_result(const short revents) -> IOWaitResult {
 
 inline auto Runner::dump_task_tree(const Task& task, int depth) -> void {
     const auto indent = std::string(depth, ' ');
-    std::println("{}- task={} parent={} suspend={} awaiting={} obj={} zombie={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.awaiting, task.objective_of, task.zombie);
+    std::println("{}- task={} parent={} suspend={} obj={} zombie={}", indent, (void*)&task, (void*)task.parent, task.suspend_reason.index(), task.objective_of, task.zombie);
     for(const auto& child : task.children) {
         dump_task_tree(child, depth + 2);
     }
@@ -52,17 +52,14 @@ inline auto Runner::gather_resumable_tasks(Task& task, GatheringResult& result) 
         }
         return;
     }
-    if(task.awaiting) {
-        return;
-    }
 
     auto& reason = task.suspend_reason;
     switch(reason.index()) {
-    case 0: // Running
+    case running_index:
         running_tasks.push_back(&task);
         break;
-    case 1: { // ByTimer
-        auto& timer = std::get<1>(reason);
+    case by_timer_index: {
+        auto& timer = std::get<by_timer_index>(reason);
         if(timer.suspend_until < result.now) {
             reason.emplace<Running>();
             running_tasks.push_back(&task);
@@ -70,18 +67,20 @@ inline auto Runner::gather_resumable_tasks(Task& task, GatheringResult& result) 
             result.sleep = std::min(result.sleep, timer.suspend_until - result.now);
         }
     } break;
-    case 2: // BySingleEvent
+    case by_single_event_index:
         break;
-    case 3: // ByMultiEvent
+    case by_multi_event_index:
         break;
-    case 4: { // ByIO
+    case by_io_index: {
         if(!running_tasks.empty()) {
             break; // polling will be skipped
         }
-        auto& io = std::get<4>(reason);
+        auto& io = std::get<by_io_index>(reason);
         result.polling_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
         result.polling_tasks.push_back(&task);
     } break;
+    case by_awaiting_index:
+        break;
     default:
         PANIC("index={}", reason.index());
     }
@@ -143,9 +142,9 @@ auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> vo
 template <CoGeneratorLike Generator>
 auto Runner::await(Generator generator) -> decltype(auto) {
     push_task(false, generator.handle, nullptr, objective_task_finished.size());
-    current_task->awaiting = true;
+    current_task->suspend_reason.emplace<ByAwaiting>();
     run();
-    current_task->awaiting = false;
+    current_task->suspend_reason.emplace<Running>();
     if constexpr(PromiseWithRetValue<decltype(Generator::handle.promise())>) {
         using Opt = std::optional<std::remove_reference_t<decltype(generator.await_resume())>>;
         return current_task->zombie ? Opt() : Opt(generator.await_resume());
@@ -162,7 +161,7 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
         c = destroy_task(c) ? task.children.erase(c) : std::next(c);
     }
     objective_task_finished[task.objective_of] = true;
-    if(task.awaiting || !task.children.empty()) {
+    if(task.suspend_reason.index() == by_awaiting_index || !task.children.empty()) {
         // cannot destroy it for now
         task.zombie = true;
         TRACE("zombified task={}", (void*)&task);
@@ -172,7 +171,7 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
 
     // cancel events
     switch(task.suspend_reason.index()) {
-    case 0:
+    case running_index:
         if(&task == current_task) {
             // called from run_tasks
             break;
@@ -186,14 +185,14 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
             }
         }
         break;
-    case 2: {
-        auto& event  = std::get<2>(task.suspend_reason);
+    case by_single_event_index: {
+        auto& event  = std::get<by_single_event_index>(task.suspend_reason);
         auto& waiter = event.event->waiter;
         ASSERT(waiter == &task, "task={}", (void*)&task);
         waiter = nullptr;
     } break;
-    case 3: {
-        auto& event   = std::get<3>(task.suspend_reason);
+    case by_multi_event_index: {
+        auto& event   = std::get<by_multi_event_index>(task.suspend_reason);
         auto& waiters = event.event->waiters;
         auto  iter    = std::ranges::find(waiters, &task);
         ASSERT(iter != waiters.end(), "task={}", (void*)&task);
@@ -279,7 +278,7 @@ inline auto Runner::event_notify(MultiEvent& event) -> void {
     TRACE("event_notify(multi) task={} event={}", (void*)current_task, (void*)&event);
     for(const auto task : event.waiters) {
         TRACE("  target {}", (void*)task);
-        ASSERT(std::get_if<ByMultiEvent>(&task->suspend_reason) != nullptr, "task={} index={}", (void*)task, task->suspend_reason.index());
+        ASSERT(task->suspend_reason.index() == by_multi_event_index, "task={} index={}", (void*)task, task->suspend_reason.index());
         task->suspend_reason.emplace<Running>();
     }
     event.waiters.clear();
