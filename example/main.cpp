@@ -8,6 +8,7 @@
 #include <coop/generator.hpp>
 #include <coop/io.hpp>
 #include <coop/multi-event.hpp>
+#include <coop/mutex.hpp>
 #include <coop/parallel.hpp>
 #include <coop/pipe.hpp>
 #include <coop/promise.hpp>
@@ -452,6 +453,27 @@ auto run_thread_test() -> coop::Async<void> {
     co_return;
 }
 
+auto mutex_test() -> coop::Async<void> {
+    struct Local {
+        coop::Mutex mutex;
+
+        auto fn() -> coop::Async<void> {
+            co_await mutex.lock();
+            co_await coop::sleep(delay_secs(1));
+            mutex.unlock();
+        }
+    };
+
+    auto& runner = *co_await coop::reveal_runner();
+    auto  local  = Local();
+    for(auto i = 0; i < 3; i += 1) {
+        runner.push_dependent_task(local.fn());
+    }
+    auto check = TimeChecker();
+    co_await coop::yield();
+    ensure(check.test_elapsed(3));
+}
+
 auto blocker_test() -> coop::Async<void> {
     auto& runner  = *co_await coop::reveal_runner();
     auto  blocker = coop::Blocker();
@@ -674,6 +696,7 @@ const auto tests = std::array{
     test(task_join),
     test(io),
     test(run_thread),
+    test(mutex),
     test(blocker),
     test(task_injector),
     test(await_from_normal_func),
