@@ -113,6 +113,8 @@ struct Runner {
     template <CoGeneratorLike Generator>
     auto push_task(Generator generator, TaskHandle* user_handle = nullptr) -> void;
     template <CoGeneratorLike Generator>
+    auto push_dependent_task(Generator generator) -> void;
+    template <CoGeneratorLike Generator>
     auto await(Generator generator) -> decltype(auto);
     auto cancel_task(TaskHandle& handle) -> bool;
     auto run() -> void;

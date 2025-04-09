@@ -22,6 +22,7 @@
 
 #include <coop/assert-def.hpp> // do not do this
 
+namespace {
 auto format_filename(const std::string_view filename) -> std::string_view {
     return coop::format_filename(filename);
 }
@@ -92,6 +93,22 @@ auto funccall_test() -> coop::Async<void> {
     };
     ensure(co_await Local::fn2() == 30);
     co_return;
+}
+
+auto dependent_task_test() -> coop::Async<void> {
+    struct Local {
+        static auto fn() -> coop::Async<void> {
+            co_await coop::sleep(delay_secs(1));
+        }
+    };
+    auto callback = [&runner = *co_await coop::reveal_runner()] {
+        runner.push_dependent_task(Local::fn());
+    };
+    auto check = TimeChecker();
+    callback();
+    check.test_elapsed(0);
+    co_await coop::yield();
+    check.test_elapsed(1);
 }
 
 auto parallel_test() -> coop::Async<void> {
@@ -603,6 +620,7 @@ auto await_complex_cancel_test() -> coop::Async<void> {
 const auto tests = std::array{
     test(sleep),
     test(funccall),
+    test(dependent_task),
     test(parallel),
     test(single_event),
     test(multi_event),
@@ -620,6 +638,7 @@ const auto tests = std::array{
     test(await_cancel),
     test(await_complex_cancel),
 };
+} // namespace
 
 auto main(const int argc, const char* const* argv) -> int {
     if(argc == 2) {

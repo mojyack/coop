@@ -140,6 +140,11 @@ auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> vo
 }
 
 template <CoGeneratorLike Generator>
+auto Runner::push_dependent_task(Generator generator) -> void {
+    push_task(false, generator.handle, nullptr, 0);
+}
+
+template <CoGeneratorLike Generator>
 auto Runner::await(Generator generator) -> decltype(auto) {
     push_task(false, generator.handle, nullptr, objective_task_finished.size());
     current_task->suspend_reason.emplace<ByAwaiting>();
@@ -347,7 +352,7 @@ loop:
             auto& task = *result.polling_tasks[i];
 
             const auto io = std::get_if<ByIO>(&task.suspend_reason);
-            ASSERT(io != nullptr);
+            ASSERT(io != nullptr, "index={}", task.suspend_reason.index());
             *io->result = impl::revents_to_io_result(pollfds[i].revents);
             task.suspend_reason.emplace<Running>();
             running_tasks.push_back(&task);
