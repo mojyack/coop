@@ -15,7 +15,7 @@ auto ParallelArgsAwaiter<Generators...>::await_suspend(CoHandle caller_task) -> 
     auto& runner = *caller_task.promise().runner;
     std::apply(
         [&runner](auto&... generators) {
-            ([&generators, &runner]() { runner.push_task(false, generators.handle, nullptr, 0); }(), ...);
+            ([&generators, &runner]() { runner.push_task(false, false, generators.handle, nullptr, 0); }(), ...);
         },
         generators);
 }
@@ -45,7 +45,7 @@ template <CoHandleLike CoHandle>
 auto ParallelVecAwaiter<Generator>::await_suspend(CoHandle caller_task) -> void {
     auto& runner = *caller_task.promise().runner;
     for(auto& generator : generators) {
-        runner.push_task(false, generator.handle, nullptr, 0);
+        runner.push_task(false, false, generator.handle, nullptr, 0);
     }
 }
 

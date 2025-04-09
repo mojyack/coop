@@ -112,18 +112,18 @@ inline auto Runner::run_tasks() -> void {
 }
 
 template <CoHandleLike CoHandle>
-inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHandle* const user_handle, size_t objective_of) -> void {
+inline auto Runner::push_task(const bool independent, const bool transfer_handle, CoHandle& handle, TaskHandle* const user_handle, size_t objective_of) -> void {
     handle.promise().runner = this;
 
     auto& parent = independent ? root : *current_task;
     // transfer cohandle to runner if independent
     // since child task may live longer than this generator
     auto& task = parent.children.emplace_back(Task{
-        .handle       = independent ? std::exchange(handle, nullptr) : handle,
+        .handle       = transfer_handle ? std::exchange(handle, nullptr) : handle,
         .parent       = &parent,
         .user_handle  = user_handle,
         .objective_of = objective_of,
-        .handle_owned = independent,
+        .handle_owned = transfer_handle,
     });
 
     if(user_handle != nullptr) {
@@ -136,17 +136,17 @@ inline auto Runner::push_task(const bool independent, CoHandle& handle, TaskHand
 
 template <CoGeneratorLike Generator>
 auto Runner::push_task(Generator generator, TaskHandle* const user_handle) -> void {
-    push_task(true, generator.handle, user_handle, 0);
+    push_task(true, true, generator.handle, user_handle, 0);
 }
 
 template <CoGeneratorLike Generator>
 auto Runner::push_dependent_task(Generator generator) -> void {
-    push_task(false, generator.handle, nullptr, 0);
+    push_task(false, true, generator.handle, nullptr, 0);
 }
 
 template <CoGeneratorLike Generator>
 auto Runner::await(Generator generator) -> decltype(auto) {
-    push_task(false, generator.handle, nullptr, objective_task_finished.size());
+    push_task(false, false, generator.handle, nullptr, objective_task_finished.size());
     current_task->suspend_reason.emplace<ByAwaiting>();
     run();
     current_task->suspend_reason.emplace<Running>();

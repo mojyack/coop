@@ -96,7 +96,7 @@ struct Runner {
 
     // coop internal
     template <CoHandleLike CoHandle>
-    auto push_task(bool independent, CoHandle& handle, TaskHandle* user_handle, size_t objective_of) -> void;
+    auto push_task(bool independent, bool transfer_handle, CoHandle& handle, TaskHandle* user_handle, size_t objective_of) -> void;
     auto destroy_task(std::list<Task>::iterator iter) -> bool;
     auto remove_task(Task& task) -> bool;
 
