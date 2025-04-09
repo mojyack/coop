@@ -500,17 +500,15 @@ auto task_injector_test() -> coop::Async<void> {
     auto  thread   = std::thread([&injector]() {
         const auto tid = std::this_thread::get_id();
         // without return value
-        injector.inject_task(
-            [](decltype(tid) tid) -> coop::Async<void> {
-                ensure(tid != std::this_thread::get_id());
-                co_return;
-            }(tid));
+        injector.inject_task([tid]() -> coop::Async<void> {
+            ensure(tid != std::this_thread::get_id());
+            co_return;
+        }());
         // with return value
-        const auto ret = injector.inject_task(
-            [](decltype(tid) tid) -> coop::Async<int> {
-                ensure(tid != std::this_thread::get_id());
-                co_return 0x1d6b;
-            }(tid));
+        const auto ret = injector.inject_task([tid]() -> coop::Async<int> {
+            ensure(tid != std::this_thread::get_id());
+            co_return 0x1d6b;
+        }());
         ensure(ret == 0x1d6b);
     });
     co_await coop::run_blocking([&thread]() { thread.join(); });
