@@ -284,14 +284,17 @@ inline auto Runner::event_wait(MultiEvent& event) -> void {
     event.waiters.push_back(current_task);
 }
 
-inline auto Runner::event_notify(MultiEvent& event) -> void {
-    TRACE("event_notify(multi) task={} event={}", (void*)current_task, (void*)&event);
-    for(const auto task : event.waiters) {
+inline auto Runner::event_notify(MultiEvent& event, size_t n) -> void {
+    TRACE("event_notify(multi) task={} event={} n={}", (void*)current_task, (void*)&event, n);
+    auto& waiters = event.waiters;
+    n             = n == 0 ? waiters.size() : std::min(n, waiters.size());
+    for(auto i = 0uz; i < n; i += 1) {
+        const auto task = waiters[i];
         TRACE("  target {}", (void*)task);
         ASSERT(task->suspend_reason.index() == by_multi_event_index, "task={} index={}", (void*)task, task->suspend_reason.index());
         task->suspend_reason.emplace<Running>();
     }
-    event.waiters.clear();
+    waiters.erase(waiters.begin(), waiters.begin() + n);
 }
 
 inline auto Runner::io_wait(const IOHandle fd, const bool read, const bool write, IOWaitResult& result) -> void {

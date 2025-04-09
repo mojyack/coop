@@ -106,7 +106,7 @@ struct Runner {
     auto event_wait(SingleEvent& event) -> void;
     auto event_notify(SingleEvent& event) -> void;
     auto event_wait(MultiEvent& event) -> void;
-    auto event_notify(MultiEvent& event) -> void;
+    auto event_notify(MultiEvent& event, size_t n) -> void;
     auto io_wait(IOHandle fd, bool read, bool write, IOWaitResult& result) -> void;
 
     // public

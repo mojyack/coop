@@ -186,7 +186,7 @@ auto single_event_test() -> coop::Async<void> {
     co_return;
 }
 
-auto multi_event_test() -> coop::Async<void> {
+auto multi_event_many_waiters_test() -> coop::Async<void> {
     struct Local {
         static auto fn(int& count, coop::MultiEvent& event) -> coop::Async<void> {
             for(auto i = 0; i < 3; i += 1) {
@@ -209,6 +209,48 @@ auto multi_event_test() -> coop::Async<void> {
         ensure(count == (i + 1) * 10);
     }
     co_return;
+}
+
+auto multi_event_notify_n_test() -> coop::Async<void> {
+    struct Local {
+        int              count;
+        coop::MultiEvent event;
+
+        auto spawn_tasks(const size_t n) -> coop::Async<void> {
+            auto& runner = *(co_await coop::reveal_runner());
+            for(auto i = 0uz; i < n; i += 1) {
+                runner.push_task(fn());
+            }
+            while(event.waiters.size() != n) {
+                co_await coop::yield();
+            }
+        }
+
+        auto fn() -> coop::Async<void> {
+            co_await event;
+            count += 1;
+        }
+    };
+
+    auto local = Local();
+
+    // notify one
+    local.count = 0;
+    co_await local.spawn_tasks(3);
+    for(auto i = 0; i < 3; i += 1) {
+        local.event.notify(1);
+        co_await coop::sleep(delay_secs(1));
+        ensure(local.count == i + 1);
+    }
+
+    // notify two
+    local.count = 0;
+    co_await local.spawn_tasks(4);
+    for(auto i = 0; i < 2; i += 1) {
+        local.event.notify(2);
+        co_await coop::sleep(delay_secs(1));
+        ensure(local.count == (i + 1) * 2);
+    }
 }
 
 auto thread_event_test() -> coop::Async<void> {
@@ -623,7 +665,8 @@ const auto tests = std::array{
     test(dependent_task),
     test(parallel),
     test(single_event),
-    test(multi_event),
+    test(multi_event_many_waiters),
+    test(multi_event_notify_n),
     test(thread_event),
     test(task_cancel),
     test(task_cancel_running),

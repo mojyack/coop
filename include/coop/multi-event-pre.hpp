@@ -19,6 +19,6 @@ struct [[nodiscard]] MultiEvent {
     auto await_suspend(CoHandle caller_task) -> void;
     auto await_resume() const -> void {}
 
-    auto notify() -> void;
+    auto notify(size_t n = 0) -> void;
 };
 } // namespace coop
