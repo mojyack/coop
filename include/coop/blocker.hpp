@@ -2,6 +2,7 @@
 #include "blocker-pre.hpp"
 #include "generator.hpp"
 #include "promise.hpp"
+#include "task-handle.hpp"
 #include "thread-event.hpp"
 
 namespace coop {
