@@ -26,5 +26,4 @@ struct TaskHandle {
     auto dissociate() -> void;
     auto join() -> TaskJoiner;
 };
-
 } // namespace coop
