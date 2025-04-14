@@ -5,7 +5,7 @@
 namespace coop {
 struct Mutex;
 
-struct MutexAwaiter {
+struct [[nodiscard]] MutexAwaiter {
     Mutex* mutex;
 
     auto await_ready() const -> bool;
