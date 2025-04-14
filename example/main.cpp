@@ -459,6 +459,7 @@ auto mutex_test() -> coop::Async<void> {
 
         auto fn() -> coop::Async<void> {
             co_await mutex.lock();
+            ensure(mutex.held);
             co_await coop::sleep(delay_secs(1));
             mutex.unlock();
         }

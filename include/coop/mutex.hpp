@@ -17,7 +17,10 @@ inline auto Mutex::lock() -> MutexAwaiter {
 }
 
 inline auto Mutex::unlock() -> void {
-    held = false;
-    event.notify(1);
+    if(event.waiters.empty()) {
+        held = false;
+    } else {
+        event.notify(1);
+    }
 }
 } // namespace coop
