@@ -7,6 +7,7 @@
 #include <coop/blocker.hpp>
 #include <coop/generator.hpp>
 #include <coop/io.hpp>
+#include <coop/lock-guard.hpp>
 #include <coop/multi-event.hpp>
 #include <coop/mutex.hpp>
 #include <coop/parallel.hpp>
@@ -463,16 +464,34 @@ auto mutex_test() -> coop::Async<void> {
             co_await coop::sleep(delay_secs(1));
             mutex.unlock();
         }
+
+        auto fn2() -> coop::Async<void> {
+            auto lock = co_await coop::LockGuard::lock(mutex);
+            ensure(mutex.held);
+            co_await coop::sleep(delay_secs(1));
+        }
     };
 
     auto& runner = *co_await coop::reveal_runner();
     auto  local  = Local();
-    for(auto i = 0; i < 3; i += 1) {
-        runner.push_dependent_task(local.fn());
+    // raw mutex
+    {
+        for(auto i = 0; i < 3; i += 1) {
+            runner.push_dependent_task(local.fn());
+        }
+        auto check = TimeChecker();
+        co_await coop::yield();
+        ensure(check.test_elapsed(3));
     }
-    auto check = TimeChecker();
-    co_await coop::yield();
-    ensure(check.test_elapsed(3));
+    // lock guard
+    {
+        for(auto i = 0; i < 3; i += 1) {
+            runner.push_dependent_task(local.fn2());
+        }
+        auto check = TimeChecker();
+        co_await coop::yield();
+        ensure(check.test_elapsed(3));
+    }
 }
 
 auto blocker_test() -> coop::Async<void> {

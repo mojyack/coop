@@ -1,5 +1,4 @@
 #pragma once
-#include "generator.hpp"
 #include "multi-event-pre.hpp"
 
 namespace coop {
@@ -22,4 +21,3 @@ struct Mutex {
     auto unlock() -> void;
 };
 } // namespace coop
-
