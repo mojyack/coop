@@ -15,6 +15,7 @@
 #include <coop/promise.hpp>
 #include <coop/recursive-blocker.hpp>
 #include <coop/runner.hpp>
+#include <coop/select.hpp>
 #include <coop/single-event.hpp>
 #include <coop/task-handle.hpp>
 #include <coop/task-injector.hpp>
@@ -535,6 +536,14 @@ auto task_injector_test() -> coop::Async<void> {
     co_return;
 }
 
+auto select_test() -> coop::Async<void> {
+    static const auto task = [](int n) -> coop::Async<void> {
+        co_await coop::sleep(delay_secs(n));
+    };
+    ensure(co_await coop::select(task(3), task(1), task(2)) == 1);
+    co_return;
+}
+
 auto await_from_normal_func_test() -> coop::Async<void> {
     struct Local {
         static auto calc(int count) -> coop::Async<int> {
@@ -717,6 +726,7 @@ const auto tests = std::array{
     test(mutex),
     test(blocker),
     test(task_injector),
+    test(select),
     test(await_from_normal_func),
     test(await_in_cancel),
     test(await_cancel),
