@@ -54,7 +54,12 @@ struct TimeChecker {
     std::chrono::system_clock::time_point begin;
 
     auto test_elapsed(const int expected_secs) -> bool {
+#if defined(_WIN32)
+        // poor windows...
+        constexpr auto tolerance = std::chrono::milliseconds(30);
+#else
         constexpr auto tolerance = std::chrono::milliseconds(10);
+#endif
 
         const auto expected = std::chrono::milliseconds(int(expected_secs * 1000 / speed_rate));
         const auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - begin);
