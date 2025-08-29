@@ -73,6 +73,7 @@ struct Pipe {
     ~Pipe() {
         if(fd != INVALID_SOCKET) {
             ASSERT(closesocket(fd) == 0, "errno={}", WSAGetLastError());
+            fd = INVALID_SOCKET;
             unref_wsa();
         }
     }
