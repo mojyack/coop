@@ -4,6 +4,8 @@
 #include "runner.hpp"
 #include "thread-event-pre.hpp"
 
+#include "assert-def.hpp"
+
 namespace coop {
 inline auto ThreadEvent::await_ready() const -> bool {
     return false;
@@ -22,14 +24,14 @@ inline auto ThreadEvent::await_resume() -> size_t {
 
     // set to nonblocking
     mode = 1;
-    coop::assert(ioctlsocket(sock, FIONBIO, &mode) == 0, "errno=", WSAGetLastError());
+    ASSERT(ioctlsocket(sock, FIONBIO, &mode) == 0, "errno={}", WSAGetLastError());
 
     auto count = size_t(0);
     while(true) {
         auto buffer = std::byte();
         if(pipe.read(&buffer, 1) != 1) {
             const auto error = WSAGetLastError();
-            coop::assert(error == WSAEWOULDBLOCK, "errno=", error);
+            ASSERT(error == WSAEWOULDBLOCK, "errno={}", error);
             break;
         }
         count += 1;
@@ -37,13 +39,13 @@ inline auto ThreadEvent::await_resume() -> size_t {
 
     // set to blocking
     mode = 0;
-    coop::assert(ioctlsocket(sock, FIONBIO, &mode) == 0, "errno=", WSAGetLastError());
+    ASSERT(ioctlsocket(sock, FIONBIO, &mode) == 0, "errno={}", WSAGetLastError());
 
     return count;
 }
 
 inline auto ThreadEvent::notify() -> void {
-    coop::assert(pipe.write("", 1) == 1, "errno=", WSAGetLastError());
+    ASSERT(pipe.write("", 1) == 1, "errno={}", WSAGetLastError());
 }
 
 inline ThreadEvent::ThreadEvent(ThreadEvent&& o)
@@ -56,3 +58,5 @@ inline ThreadEvent::ThreadEvent() {
 inline ThreadEvent::~ThreadEvent() {
 }
 } // namespace coop
+
+#include "assert-undef.hpp"
