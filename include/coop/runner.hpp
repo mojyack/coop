@@ -166,7 +166,7 @@ inline auto Runner::destroy_task(std::list<Task>::iterator iter) -> bool {
     for(auto c = task.children.begin(); c != task.children.end();) {
         c = destroy_task(c) ? task.children.erase(c) : std::next(c);
     }
-    if(!objective_task_finished.empty()) {
+    if(!objective_task_finished.empty() && !task.zombie /*do not notify twice*/) {
         objective_task_finished[task.objective_of] = true;
     }
     if(task.suspend_reason.index() == by_awaiting_index || !task.children.empty()) {
