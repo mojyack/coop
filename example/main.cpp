@@ -444,19 +444,30 @@ auto io_test() -> coop::Async<void> {
 }
 
 auto run_thread_test() -> coop::Async<void> {
-    struct Local {
-        static auto fn(int* count) -> void {
-            for(auto i = 0; i < 3; i += 1) {
-                std::this_thread::sleep_for(delay_secs(1));
-                (*count) += 1;
-            }
+    auto count  = 0;
+    auto init   = false;
+    auto thread = coop::Thread([&init] {
+        init = true;
+    });
+    { // blocking call
+        auto check = TimeChecker();
+        for(auto round = 0; round < 2; round += 1) {
+            co_await thread.run([&count]() {
+                for(auto i = 0; i < 3; i += 1) {
+                    std::this_thread::sleep_for(delay_secs(1));
+                    count += 1;
+                }
+            });
         }
-    };
-    auto count = 0;
-    auto check = TimeChecker();
-    co_await coop::run_blocking(Local::fn, &count);
-    ensure(check.test_elapsed(3));
-    ensure(count == 3);
+        ensure(check.test_elapsed(6));
+        ensure(count == 6);
+    }
+    // init invoked?
+    ensure(init);
+    { // return value
+        const auto ret = co_await thread.run([]() { return 0x1d6b; });
+        ensure(ret == 0x1d6b);
+    }
     co_return;
 }
 
@@ -537,7 +548,10 @@ auto task_injector_test() -> coop::Async<void> {
         }());
         ensure(ret == 0x1d6b);
     });
-    co_await coop::run_blocking([&thread]() { thread.join(); });
+
+    auto joiner = coop::Thread();
+    co_await joiner.run([&thread]() { thread.join(); });
+
     co_return;
 }
 
