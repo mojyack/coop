@@ -471,6 +471,23 @@ auto run_thread_test() -> coop::Async<void> {
     co_return;
 }
 
+auto io_not_starved_test() -> coop::Async<void> {
+    // a task that never sleeps must not prevent io waiting tasks from resuming
+    auto done   = false;
+    auto thread = coop::Thread();
+    auto busy   = [&done]() -> coop::Async<void> {
+        while(!done) {
+            co_await coop::yield();
+        }
+    };
+    auto check = TimeChecker();
+    (co_await coop::reveal_runner())->push_task(busy());
+    co_await thread.run([]() { std::this_thread::sleep_for(delay_secs(1)); });
+    done = true;
+    ensure(check.test_elapsed(1));
+    co_return;
+}
+
 auto mutex_test() -> coop::Async<void> {
     struct Local {
         coop::Mutex mutex;
@@ -742,6 +759,7 @@ const auto tests = std::array{
     test(task_join),
     test(io),
     test(run_thread),
+    test(io_not_starved),
     test(mutex),
     test(blocker),
     test(task_injector),

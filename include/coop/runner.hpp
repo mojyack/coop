@@ -73,9 +73,6 @@ inline auto Runner::gather_resumable_tasks(Task& task, GatheringResult& result) 
     case by_multi_event_index:
         break;
     case by_io_index: {
-        if(!running_tasks.empty()) {
-            break; // polling will be skipped
-        }
         auto& io = std::get<by_io_index>(reason);
         result.polling_fds.emplace_back(pollfd{io.file, short((io.read ? POLLIN : 0) | (io.write ? POLLOUT : 0)), 0});
         result.polling_tasks.push_back(&task);
@@ -331,16 +328,13 @@ loop:
     gather_resumable_tasks(root, result);
     const auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(result.sleep).count();
 
-    if(!running_tasks.empty()) {
-        run_tasks(); // resume already waked tasks
-        goto loop;
-    }
-
     if(!result.polling_tasks.empty()) {
         // wait for io
         auto& pollfds = result.polling_fds;
         DEBUG("poll start timeout={}", timeout_ms);
-        const auto poll_timeout = timeout_ms + 1; // +1 to correct rounding error
+        // do not block if some tasks are already runnable, but still check io
+        // so that io-waiting tasks are not starved by busy tasks
+        const auto poll_timeout = running_tasks.empty() ? timeout_ms + 1 /*+1 to correct rounding error*/ : 0;
 #if defined(_WIN32)
         const auto nfds = WSAPoll(pollfds.data(), pollfds.size(), poll_timeout);
         ASSERT(nfds != SOCKET_ERROR, "poll failed errno={}", WSAGetLastError());
@@ -364,6 +358,11 @@ loop:
             running_tasks.push_back(&task);
         }
         run_tasks();
+        goto loop;
+    }
+
+    if(!running_tasks.empty()) {
+        run_tasks(); // resume already waked tasks
         goto loop;
     }
 
