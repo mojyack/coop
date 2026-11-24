@@ -51,7 +51,7 @@ auto fail(const int line) -> void {
     }
 
 struct TimeChecker {
-    std::chrono::system_clock::time_point begin;
+    std::chrono::steady_clock::time_point begin;
 
     auto test_elapsed(const int expected_secs) -> bool {
 #if defined(_WIN32)
@@ -62,7 +62,7 @@ struct TimeChecker {
 #endif
 
         const auto expected = std::chrono::milliseconds(int(expected_secs * 1000 / speed_rate));
-        const auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - begin);
+        const auto elapsed  = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin);
         if(expected > tolerance && elapsed < expected - tolerance) {
             std::println(stderr, "time check failed {} < {}", elapsed, expected);
             return false;
@@ -75,11 +75,11 @@ struct TimeChecker {
     }
 
     TimeChecker() {
-        begin = std::chrono::system_clock::now();
+        begin = std::chrono::steady_clock::now();
     }
 };
 
-auto delay_secs(const int seconds) -> std::chrono::system_clock::duration {
+auto delay_secs(const int seconds) -> std::chrono::steady_clock::duration {
     return std::chrono::milliseconds(size_t(1000 * seconds / speed_rate));
 }
 

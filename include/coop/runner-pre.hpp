@@ -32,7 +32,7 @@ struct Running {
 };
 
 struct ByTimer {
-    std::chrono::system_clock::time_point suspend_until;
+    std::chrono::steady_clock::time_point suspend_until;
 };
 
 struct BySingleEvent {
@@ -75,7 +75,7 @@ struct Task {
 
 struct Runner {
     // private
-    using sc = std::chrono::system_clock;
+    using sc = std::chrono::steady_clock;
     struct GatheringResult {
         std::vector<Task*>  polling_tasks;
         std::vector<pollfd> polling_fds;
@@ -102,7 +102,7 @@ struct Runner {
 
     // for awaiters
     auto join(TaskHandle& handle) -> void;
-    auto delay(std::chrono::system_clock::duration duration) -> void;
+    auto delay(std::chrono::steady_clock::duration duration) -> void;
     auto event_wait(SingleEvent& event) -> void;
     auto event_notify(SingleEvent& event) -> void;
     auto event_wait(MultiEvent& event) -> void;

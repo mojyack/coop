@@ -262,9 +262,9 @@ inline auto Runner::join(TaskHandle& handle) -> void {
     child.parent = current_task;
 }
 
-inline auto Runner::delay(const std::chrono::system_clock::duration duration) -> void {
+inline auto Runner::delay(const std::chrono::steady_clock::duration duration) -> void {
     TRACE("delay task={} duratoin={}", (void*)current_task, duration);
-    current_task->suspend_reason.emplace<ByTimer>(std::chrono::system_clock::now() + duration);
+    current_task->suspend_reason.emplace<ByTimer>(std::chrono::steady_clock::now() + duration);
 }
 
 inline auto Runner::event_wait(SingleEvent& event) -> void {

@@ -15,7 +15,7 @@ inline auto TimeAwaiter::await_suspend(CoHandle caller_task) const -> void {
 inline auto TimeAwaiter::await_resume() const -> void {
 }
 
-inline TimeAwaiter::TimeAwaiter(const std::chrono::system_clock::duration duration)
+inline TimeAwaiter::TimeAwaiter(const std::chrono::steady_clock::duration duration)
     : duration(duration) {
 }
 } // namespace coop
